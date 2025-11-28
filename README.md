@@ -1,4 +1,126 @@
-# NFL Big Data Bowl 2026 – University Track
+# NFL Big Data Bowl 2025 - Receiver Execution Gap Analysis
+
+**Competition:** NFL Big Data Bowl 2025 Analytics (University Track)  
+**Deadline:** December 17, 2025, 11:59 PM UTC  
+**Approach:** Measuring the gap between expected and actual performance on contested catches
+
+## 📋 Project Overview
+
+This project analyzes contested catch situations in the NFL by measuring **receiver positioning quality** (separation, timing, route efficiency) and comparing it to **actual outcomes** (completions vs incompletions). The "execution gap" identifies clutch plays where receivers exceeded expectations and missed opportunities where favorable positioning didn't convert.
+
+### Core Metrics
+
+1. **SQI (Separation Quality Index)**: Spatial advantage over defenders
+   - Formula: `mean(separation) - 0.5 × std(separation)`
+   - Validated: r=0.353 correlation with completion (p<0.001)
+
+2. **BAA (Ball Arrival Advantage)**: Temporal advantage in reaching ball
+   - Formula: `avg(defender_arrival_frame) - receiver_arrival_frame`
+   - Positive = receiver arrives first
+
+3. **RES (Route Efficiency Score)**: Path quality to ball landing
+   - Formula: `(optimal_distance / actual_distance) × 100`
+   - 100% = perfect straight line
+
+### Execution Gap Model
+
+- **Logistic Regression**: Predicts expected completion rate from positioning metrics
+- **Accuracy**: 72% on Week 1 validation data
+- **Execution Gap**: `actual_outcome - expected_outcome`
+  - Positive gap: Over-performance (clutch execution)
+  - Negative gap: Under-performance (missed opportunity)
+
+## 🚀 Quick Start
+
+### Installation
+
+```bash
+# Clone repository
+git clone https://github.com/vserifoglu/NFL-Big-Data-Compeition.git
+cd NFL-Big-Data-Compeition
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Running the Pipeline
+
+```bash
+# Process Week 1 only (fast, for testing)
+python src/pipeline.py --weeks 1
+
+# Process all weeks (full analysis)
+python src/pipeline.py --weeks 1-9
+
+# Custom data directory
+python src/pipeline.py --weeks 1-9 --data-dir /path/to/data --output-dir outputs/results
+```
+
+### Output
+
+Results saved to `outputs/results/all_plays_metrics.csv`:
+- One row per play
+- Columns: `game_id`, `play_id`, `outcome`, `sqi`, `baa`, `res`, `expected_catch_rate`, `execution_gap`
+
+## 📁 Project Structure
+
+```
+NFL-Big-Data-Competition/
+├── src/
+│   ├── __init__.py
+│   ├── metrics.py           # SQI, BAA, RES calculators
+│   ├── data_loader.py       # Load/merge/enrich data
+│   ├── models.py            # Execution gap model
+│   └── pipeline.py          # Main orchestration script
+│
+├── notebooks/
+│   ├── formula_and_data_validation.ipynb    # Validation results ✅
+│   └── final_story.ipynb                    # (TBD) Presentation notebook
+│
+├── outputs/
+│   ├── figures/             # Generated plots
+│   └── results/             # CSV results
+│
+├── requirements.txt
+└── README.md
+```
+
+## 📊 Validation Results
+
+**Status:** ✅ GREEN LIGHT (November 19, 2025)
+
+- ✅ **Data Feasibility**: 819 plays in Week 1, 586 with 2+ defenders (72%)
+- ✅ **Metric Validation**: All three metrics produce sensible values
+- ✅ **Hypothesis Confirmed**: SQI significantly predicts completion (r=0.353, p=0.0005)
+- ✅ **Model Performance**: 72% accuracy on logistic regression
+
+**Key Finding:** Completions average **1.40 yards more separation** than incompletions (3.50 vs 2.09 yards, p<0.001)
+
+See `notebooks/formula_and_data_validation.ipynb` for full validation details.
+
+## 🎯 Next Steps
+
+- [ ] Scale to full season (weeks 1-9)
+- [ ] Advanced modeling (Random Forest, XGBoost)
+- [ ] Feature engineering (coverage type, game context)
+- [ ] Visualization pipeline
+- [ ] Final presentation notebook
+- [ ] Kaggle writeup (≤2000 words)
+
+## 📚 Data Source
+
+- **Competition Data**: [NFL Big Data Bowl 2025](https://www.kaggle.com/competitions/nfl-big-data-bowl-2025)
+- **Dataset**: 7,118 contested catch plays, 2023 season (weeks 1-9)
+- **Files**:
+  - `input_2023_wXX.csv`: Pre-pass tracking (23 columns, player metadata)
+  - `output_2023_wXX.csv`: Post-pass tracking (6 columns, positions only)
+  - `supplementary_data.csv`: Play-level context (outcomes, coverage, EPA)
+
+## 👤 Author
+
+**Veysel Serifoglu**  
+University Track Submission  
+GitHub: [@vserifoglu](https://github.com/vserifoglu)
 
 [![Competition](https://img.shields.io/badge/Competition-NFL%20Big%20Data%20Bowl%202026-blue)](https://www.kaggle.com/competitions/nfl-big-data-bowl-2026)
 [![Track](https://img.shields.io/badge/Track-University-green)]()
