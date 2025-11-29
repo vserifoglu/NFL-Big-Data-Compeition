@@ -35,7 +35,7 @@ st.markdown("""
 # ==========================================
 # 2. DATA LOADERS
 # ==========================================
-@st.cache_data
+# @st.cache_data
 def load_results():
     """Loads the analytical results (stats, scores)."""
     paths = ["clv_data_export.csv", "src/clv_data_export.csv"]
@@ -44,7 +44,7 @@ def load_results():
             return pd.read_csv(p)
     return pd.DataFrame()
 
-@st.cache_data
+# @st.cache_data
 def load_animation_cache():
     """Loads the Highlight Reel (tracking data for VIP plays only)."""
     paths = ["animation_cache.csv", "src/animation_cache.csv"]
@@ -124,7 +124,7 @@ if page == "1. The War Room (Summary)":
     st.plotly_chart(fig, use_container_width=True)
 
 # ==========================================
-# PAGE 2: THE VOID ANALYZER (REPLAY)
+# PAGE 2: THE VOID ANALYZER (STATUE FIX)
 # ==========================================
 elif page == "2. The Void Analyzer (Replay)":
     st.title("🎬 The Void Analyzer")
@@ -132,170 +132,158 @@ elif page == "2. The Void Analyzer (Replay)":
     if df_cache.empty:
         st.warning("⚠️ `animation_cache.csv` not found.")
     else:
-        # Play Selector Logic
+        # Selector Logic
         available_plays = df_cache[['game_id', 'play_id', 'clv_score', 'highlight_type']].drop_duplicates()
         available_plays = available_plays.sort_values('clv_score', ascending=False)
         
         play_option = st.selectbox(
             "Select a Highlight Play:",
             available_plays.index,
-            format_func=lambda x: f"[{available_plays.loc[x, 'highlight_type']}] Game {available_plays.loc[x, 'game_id']} - Play {available_plays.loc[x, 'play_id']} ({available_plays.loc[x, 'clv_score']:.2f} y/s)"
+            format_func=lambda x: f"[{available_plays.loc[x, 'highlight_type']}] Game {available_plays.loc[x, 'game_id']} - Play {available_plays.loc[x, 'play_id']}"
         )
         
         sel_game = available_plays.loc[play_option, 'game_id']
         sel_play = available_plays.loc[play_option, 'play_id']
         sel_score = available_plays.loc[play_option, 'clv_score']
         
-        # Identify the Victim ID for this specific play
         victim_info = df_results[(df_results['game_id'] == sel_game) & (df_results['play_id'] == sel_play)]
         victim_id = int(victim_info.iloc[0]['nfl_id']) if not victim_info.empty else -1
         
         if st.button("Load Animation"):
-            # 1. Filter Data
+            # 1. LOAD DATA
             play_data = df_cache[(df_cache['game_id'] == sel_game) & (df_cache['play_id'] == sel_play)].copy()
             
             if not play_data.empty:
-                play_data = play_data.sort_values('frame_id')
-                
-                # 2. Identify Target ID (Receiver)
+                cols = play_data.columns
+                name_col = 'player_name' if 'player_name' in cols else 'displayName'
+                if name_col not in cols: name_col = 'nfl_id' 
+                id_col = 'nfl_id' if 'nfl_id' in cols else 'nflId'
+
+                # --- STEP A: DATA SANITIZATION (CRITICAL) ---
+                # 1. Handle Football
+                if name_col in cols:
+                    mask_football = play_data[name_col].astype(str).str.contains('football', case=False, na=False)
+                    play_data.loc[mask_football, id_col] = 999999
+
+                # 2. Normalize IDs to String to prevent "Ghosting"
+                play_data[id_col] = pd.to_numeric(play_data[id_col], errors='coerce').fillna(-1).astype(int).astype(str)
+
+                # --- STEP B: THE STATUE GENERATOR (NEW) ---
+                # Instead of removing players, we freeze them.
+                if 'phase' in play_data.columns:
+                    # 1. Find all frames that happen AFTER the throw
+                    post_throw_frames = sorted(play_data[play_data['phase'] == 'post_throw']['frame_id'].unique())
+                    
+                    if len(post_throw_frames) > 0:
+                        # 2. Identify who disappears (Present in Pre, Missing in Post)
+                        pre_ids = set(play_data[play_data['phase'] == 'pre_throw'][id_col].unique())
+                        post_ids = set(play_data[play_data['phase'] == 'post_throw'][id_col].unique())
+                        dropout_ids = list(pre_ids - post_ids) # Players who vanished
+                        
+                        if dropout_ids:
+                            # 3. Get the LAST known position of these dropouts
+                            last_known_positions = play_data[play_data[id_col].isin(dropout_ids)].sort_values('frame_id').groupby(id_col).tail(1)
+                            
+                            # 4. Generate "Ghost Rows" for every future frame
+                            new_rows = []
+                            # We create a cross-product: Every Dropout x Every Post-Throw Frame
+                            # This is much faster than looping
+                            for _, player_row in last_known_positions.iterrows():
+                                for f_id in post_throw_frames:
+                                    ghost = player_row.copy()
+                                    ghost['frame_id'] = f_id
+                                    # ghost['visual_role'] = 'Ghost' # Optional: could mark them differently later
+                                    new_rows.append(ghost)
+                            
+                            if new_rows:
+                                play_data = pd.concat([play_data, pd.DataFrame(new_rows)], ignore_index=True)
+                                st.caption(f"ℹ️ Statue Mode: Froze {len(dropout_ids)} players so you can see the formation.")
+
+                # --- STEP C: STRICT SORTING ---
+                # Sort is mandatory after adding new rows
+                play_data = play_data.sort_values(['frame_id', id_col])
+
+                # 3. Identify Roles
                 target_id = -1
                 if 'target_id' in play_data.columns:
-                    ids = play_data['target_id'].dropna().unique()
-                    if len(ids) > 0: target_id = int(ids[0])
+                    t_val = play_data['target_id'].dropna().unique()
+                    if len(t_val) > 0: target_id = int(t_val[0])
 
-                # 3. Robust Column Handling
-                cols = play_data.columns
-                name_col = 'player_name' if 'player_name' in cols else ('displayName' if 'displayName' in cols else None)
-                id_col = 'nfl_id' if 'nfl_id' in cols else ('nflId' if 'nflId' in cols else None)
+                s_victim = str(victim_id)
+                s_target = str(target_id)
 
-                # --- 4. ROLE & LABEL LOGIC (THE FIX) ---
-                def get_role_attributes(row):
-                    # Returns tuple: (Role_Category, Label_Text)
-                    p_name = str(row[name_col]) if name_col else ''
-                    p_pos = str(row['position']) if 'position' in row else ''
-                    p_id = row[id_col] if id_col else -1
+                def get_role(row):
+                    pid = row[id_col]
+                    pname = str(row[name_col])
                     
-                    # A. Football
-                    if str(p_name).lower() == 'football': 
-                        return 'Football', ''
+                    if pid == '999999': return 'Football', ''
+                    if pid == s_target: return 'Target (Receiver)', f"TARGET: {pname}"
+                    if pid == s_victim: return 'VICTIM (Leaker)', f"VICTIM: {pname}"
                     
-                    # B. Quarterback / Thrower
-                    # We check BOTH position and specific role to ensure we never miss him.
-                    p_role = str(row.get('player_role', ''))
+                    pos = str(row.get('position', ''))
+                    role = str(row.get('player_role', ''))
+                    if pos == 'QB' or role == 'Passer': return 'Quarterback', f"QB: {pname}"
                     
-                    if p_pos == 'QB' or p_role == 'Passer': 
-                        return 'Quarterback', f"QB: {p_name}"
-                    
-                    try:
-                        curr_id = int(float(p_id))
-                        # C. Victim (The Leaker)
-                        if victim_id != -1 and curr_id == int(float(victim_id)): 
-                            return 'VICTIM (Leaker)', f"VICTIM: {p_name}"
-                        
-                        # D. Target (The Receiver)
-                        if target_id != -1 and curr_id == int(float(target_id)): 
-                            return 'Target (Receiver)', f"TARGET: {p_name}"
-                    except: 
-                        pass
-                    
-                    # E. General Offense/Defense
-                    if 'player_side' in row:
-                        side = str(row['player_side']).lower()
-                        if side == 'defense': return 'Defense', ''
-                        if side == 'offense': return 'Offense', ''
-                    
+                    side = str(row.get('player_side', '')).lower()
+                    if side == 'defense': return 'Defense', ''
                     return 'Offense', ''
 
-                # Apply Logic row-by-row
-                role_data = play_data.apply(get_role_attributes, axis=1)
-                play_data['visual_role'] = [x[0] for x in role_data]
-                play_data['visual_label'] = [x[1] for x in role_data] # Only Key players get labels
-                
-                # Map Attributes for Plotly
-                size_map = {'Football': 6, 'Quarterback': 14, 'VICTIM (Leaker)': 16, 'Target (Receiver)': 14, 'Defense': 8, 'Offense': 8}
-                # Ensure float for Plotly size
-                play_data['visual_size'] = play_data['visual_role'].map(size_map).fillna(8).astype(float)
-                
-                color_map = {
-                    'Football': '#8c564b',    # Brown
-                    'Quarterback': '#ffD700', # Gold
-                    'VICTIM (Leaker)': '#ff00ff', # Magenta
-                    'Target (Receiver)': '#00FF00', # Green
-                    'Defense': '#d62728',     # Red
-                    'Offense': '#1f77b4'      # Blue
-                }
-                
-                symbol_map = {
-                    'Football': 'circle', 
-                    'Quarterback': 'diamond', 
-                    'Target (Receiver)': 'star', 
-                    'Defense': 'circle', 
-                    'Offense': 'circle', 
-                    'VICTIM (Leaker)': 'x'
-                }
+                res = play_data.apply(get_role, axis=1)
+                play_data['visual_role'] = [x[0] for x in res]
+                play_data['visual_label'] = [x[1] for x in res]
 
-                # --- 5. BUILD CHART ---
+                # Map Colors/Sizes
+                color_map = {
+                    'Football': 'brown', 'Quarterback': 'gold',
+                    'VICTIM (Leaker)': 'magenta', 'Target (Receiver)': 'lime',
+                    'Defense': 'red', 'Offense': 'blue'
+                }
+                size_map = {
+                    'Football': 6, 'Quarterback': 12,
+                    'VICTIM (Leaker)': 15, 'Target (Receiver)': 12,
+                    'Defense': 8, 'Offense': 8
+                }
+                play_data['visual_size'] = play_data['visual_role'].map(size_map).fillna(8)
+
+                # 4. PLOT
                 fig = px.scatter(
-                    play_data, 
-                    x='x', y='y', 
-                    animation_frame='frame_id', 
+                    play_data,
+                    x='x', y='y',
+                    animation_frame='frame_id',
                     animation_group=id_col,
-                    
-                    color='visual_role', 
+                    color='visual_role',
                     color_discrete_map=color_map,
-                    
-                    symbol='visual_role', 
-                    symbol_map=symbol_map,
-                    
-                    size='visual_size', 
+                    symbol='visual_role',
+                    size='visual_size',
                     size_max=18,
-                    
-                    text='visual_label', # <--- Adds names to the chart
+                    text='visual_label',
                     hover_name=name_col,
-                    
                     range_x=[0, 120], range_y=[0, 53.3],
-                    title=f"Visualizing Leak Velocity: {sel_score:.2f} yds/s"
+                    title=f"Visualizing Leak: {sel_score:.2f} yds/s"
                 )
-                
-                # Add Ghost Target (Static)
+
                 if 'ball_land_x' in play_data.columns:
-                    land_x = play_data['ball_land_x'].iloc[0]
-                    land_y = play_data['ball_land_y'].iloc[0]
+                    bx = play_data['ball_land_x'].iloc[0]
+                    by = play_data['ball_land_y'].iloc[0]
                     fig.add_trace(go.Scatter(
-                        x=[land_x], y=[land_y],
-                        mode='markers+text', 
-                        marker=dict(symbol='star-open', size=20, color='gold', line=dict(width=2, color='black')),
-                        name='Catch Point',
-                        text=['VOID'],
-                        textposition="bottom center"
+                        x=[bx], y=[by], mode='markers', marker=dict(symbol='star-open', size=20, color='yellow'),
+                        name='Catch Point'
                     ))
 
-                # Formatting & Slow Motion
-                fig.update_traces(textposition='top center', textfont_size=11)
-                fig.update_layout(
-                    shapes=[
-                        dict(type="rect", x0=0, y0=0, x1=10, y1=53.3, fillcolor="red", opacity=0.2, layer="below"),
-                        dict(type="rect", x0=110, y0=0, x1=120, y1=53.3, fillcolor="blue", opacity=0.2, layer="below")
-                    ],
-                    height=650,
-                    # Slow Motion: 200ms per frame
-                    updatemenus=[dict(
-                        type='buttons', showactive=False,
-                        buttons=[dict(
-                            label='Play',
-                            method='animate',
-                            args=[None, dict(frame=dict(duration=200, redraw=False), fromcurrent=True)]
-                        )]
-                    )]
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-                st.success("Rendering Complete. Watch the Gold Diamond (QB) manipulate the Magenta X (Victim).")
-            else:
-                st.error("Error loading play data.")
+                fig.update_traces(textposition='top center')
+                fig.update_layout(height=700)
+                fig.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = 100
 
+                st.plotly_chart(fig, use_container_width=True)
+                
+            else:
+                st.error("Data Load Error: DataFrame is empty.")
+                
 # ==========================================
-# PAGE 3: SCOUTING REPORTS
+# PAGE 3: SCOUTING REPORTS (UPDATED)
+# ==========================================
+# ==========================================
+# PAGE 3: SCOUTING REPORTS (FINAL)
 # ==========================================
 elif page == "3. Scouting Reports":
     st.title("🏆 Dual-Threat Scouting Reports")
@@ -303,28 +291,99 @@ elif page == "3. Scouting Reports":
     if 'qb_name' not in df_results.columns:
         st.error("⚠️ Data Error: `qb_name` column missing.")
     else:
-        tab1, tab2, tab3 = st.tabs(["Puppeteers (QBs)", "Gravity (WRs)", "Victims (Defenders)"])
+        # Create Tabs
+        tab1, tab2, tab3 = st.tabs(["🧠 The Puppeteers (QBs)", "🪐 Gravity Index (Decoys)", "🎯 The Victims (Defense)"])
         
+        # --- TAB 1: PUPPETEERS ---
         with tab1:
-            st.subheader("The Puppeteers")
-            st.markdown("Quarterbacks who create leaks by looking off defenders.")
+            st.markdown("""
+            **The Metric:** `Total Void Yards Created`
+            **Definition:** The total square yardage of open space a QB created by manipulating defenders with their eyes/body.
+            **Why it matters:** High volume indicates a QB who actively processes the field rather than just taking what's given.
+            """)
+            
+            # 1. Aggregation
+            # We filter for Puppeteer cause, then sum the CLV (Void Yards)
             qb_stats = df_results[df_results['leak_cause'] == 'Puppeteer'].groupby('qb_name').agg(
-                Score=('clv', 'mean'), Plays=('clv', 'count'), EPA=('epa', 'mean')).reset_index()
-            st.dataframe(qb_stats[qb_stats['Plays'] >= 3].sort_values('Score', ascending=False), use_container_width=True)
+                Total_Void_Yards=('clv', 'sum'),
+                Avg_Void_Per_Play=('clv', 'mean'),
+                Plays=('clv', 'count'), 
+                EPA=('epa', 'mean')
+            ).reset_index()
+            
+            # 2. Filter (Starters only) & Sort
+            elite_qbs = qb_stats[qb_stats['Plays'] >= 20].sort_values('Total_Void_Yards', ascending=False).head(20).reset_index(drop=True)
+            elite_qbs.index += 1 # Start ranking at 1
+            
+            # 3. Render
+            st.dataframe(
+                elite_qbs.style.format({
+                    'Total_Void_Yards': '{:,.1f}', 
+                    'Avg_Void_Per_Play': '{:.2f}', 
+                    'EPA': '{:.3f}'
+                }).background_gradient(subset=['Total_Void_Yards'], cmap="Blues"),
+                use_container_width=True,
+                column_config={
+                    "Total_Void_Yards": st.column_config.Column("Total Void Yds", help="Cumulative CLV generated")
+                }
+            )
 
+        # --- TAB 2: GRAVITY ---
         with tab2:
-            st.subheader("The Gravity Index")
-            st.markdown("Receivers who drag defenders out of zones.")
-            wr_stats = df_results[df_results['leak_cause'] == 'Gravity'].groupby('target_name').agg(
-                Score=('clv', 'mean'), Plays=('clv', 'count'), EPA=('epa', 'mean')).reset_index()
-            st.dataframe(wr_stats[wr_stats['Plays'] >= 3].sort_values('Score', ascending=False), use_container_width=True)
+            st.markdown("""
+            **The Metric:** `Total EPA Generated` (as a Decoy)
+            **Definition:** The total Expected Points Added (EPA) on plays where this player acted as a **Decoy** and successfully pulled a defender away from the actual target.
+            **The Insight:** These are the unsung heroes—route runners who clear space for teammates.
+            """)
+            
+            if 'decoy_name' in df_results.columns:
+                grav_df = df_results[df_results['leak_cause'] == 'Gravity'].copy()
+                
+                wr_stats = grav_df.groupby('decoy_name').agg(
+                    Total_EPA_Generated=('epa', 'sum'),
+                    Avg_Void_Created=('clv', 'mean'), 
+                    Decoy_Plays=('clv', 'count')
+                ).reset_index()
+                
+                # Filter & Sort
+                elite_gravity = wr_stats[wr_stats['Decoy_Plays'] >= 5].sort_values('Total_EPA_Generated', ascending=False).head(20).reset_index(drop=True)
+                elite_gravity.index += 1
+                
+                st.dataframe(
+                    elite_gravity.style.format({
+                        'Total_EPA_Generated': '{:.2f}', 
+                        'Avg_Void_Created': '{:.2f}'
+                    }).background_gradient(subset=['Total_EPA_Generated'], cmap="Greens"),
+                    use_container_width=True
+                )
+            else:
+                st.error("⚠️ Decoy data not found. Please re-run `src/calculate_clv.py`.")
 
+        # --- TAB 3: VICTIMS ---
         with tab3:
-            st.subheader("The Victims")
-            st.markdown("Defenders most susceptible to manipulation.")
+            st.markdown("""
+            **The Metric:** `Total Void Allowed`
+            **Definition:** The amount of space a defender surrendered because they were manipulated by a QB or Decoy.
+            **Context:** High numbers here can mean a "Gambling" playstyle (Asante Samuel Jr.) or high target volume (Fred Warner).
+            """)
+            
             def_stats = df_results.groupby(['player_name', 'player_position']).agg(
-                Bait_Score=('clv', 'mean'), Plays=('clv', 'count'), EPA=('epa', 'sum')).reset_index()
-            st.dataframe(def_stats[def_stats['Plays'] >= 3].sort_values('Bait_Score', ascending=False), use_container_width=True)
+                Total_Void_Allowed=('clv', 'sum'),
+                Avg_Bait_Score=('clv', 'mean'), 
+                Times_Fooled=('clv', 'count')
+            ).reset_index()
+            
+            # Filter for Starters
+            victims = def_stats[def_stats['Times_Fooled'] >= 20].sort_values('Total_Void_Allowed', ascending=False).head(20).reset_index(drop=True)
+            victims.index += 1
+            
+            st.dataframe(
+                victims.style.format({
+                    'Total_Void_Allowed': '{:,.1f}', 
+                    'Avg_Bait_Score': '{:.2f}'
+                }).background_gradient(subset=['Total_Void_Allowed'], cmap="Reds"),
+                use_container_width=True
+            )
 
 # ==========================================
 # PAGE 4: THE LAB (PHYSICS)
