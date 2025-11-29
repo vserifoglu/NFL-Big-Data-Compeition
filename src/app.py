@@ -58,19 +58,16 @@ df_results = load_results()
 df_cache = load_animation_cache()
 
 # ==========================================
-# 3. HELPER: ANIMATION RENDERER (UPDATED)
+# 3. HELPER: ANIMATION RENDERER
 # ==========================================
 def render_play_animation(game_id, play_id, victim_id=-1, decoy_name=None):
     """
     Renders the field animation.
     Now accepts 'decoy_name' to highlight the Gravity Creator.
     """
-    print(game_id, play_id, "testing here")
-    print(df_cache.head(30))
     # 1. Filter Data from Cache (The Body)
     play_data = df_cache[(df_cache['game_id'] == game_id) & (df_cache['play_id'] == play_id)].copy()
-    play_data_test = df_cache[(df_cache['game_id'] == game_id)]
-    print(play_data_test, "play_data")
+    
     if play_data.empty:
         st.warning(f"⚠️ Play data not found for Game {game_id} Play {play_id}.")
         return
@@ -123,7 +120,6 @@ def render_play_animation(game_id, play_id, victim_id=-1, decoy_name=None):
         if 'football' in pname_lower or pid == '999999': return 'Football', ''
         
         # Highlight the DECOY (Gravity Creator)
-        # We match by Name because we didn't save Decoy ID, which is perfectly fine.
         if clean_decoy and clean_decoy in pname_lower:
             return 'Decoy (Gravity)', f"GRAVITY: {pname}"
         
@@ -156,7 +152,7 @@ def render_play_animation(game_id, play_id, victim_id=-1, decoy_name=None):
         'Football': 6, 'Quarterback': 12,
         'VICTIM (Leaker)': 16, 
         'Target (Receiver)': 12,
-        'Decoy (Gravity)': 16, # Make Decoy BIG so we see him
+        'Decoy (Gravity)': 16, # Make Decoy BIG
         'Defense': 8, 'Offense': 8
     }
     symbol_map = {
@@ -286,7 +282,7 @@ elif page == "2. The Void Analyzer (Replay)":
             render_play_animation(sel_game, sel_play, victim_id)
 
 # ==========================================
-# PAGE 3: SCOUTING REPORTS (LOGIC FIXED)
+# PAGE 3: SCOUTING REPORTS
 # ==========================================
 elif page == "3. Scouting Reports":
     st.title("🏆 Dual-Threat Scouting Reports")
@@ -308,14 +304,11 @@ elif page == "3. Scouting Reports":
                 Plays=('clv', 'count')
             ).reset_index()
             
-            # 2. Identify Best Rep (THE FIX)
-            # Sort by CLV Score Descending -> Drop Duplicates keeps the top one
+            # 2. Identify Best Rep
             best_reps = pup_df.sort_values('clv', ascending=False).drop_duplicates('qb_name')[['qb_name', 'game_id', 'play_id']]
             
-            # 3. Merge Stats with Best Reps
+            # 3. Merge
             elite_qbs = qb_stats.merge(best_reps, on='qb_name')
-            
-            # Filter & Sort
             elite_qbs = elite_qbs[elite_qbs['Plays'] >= 20].sort_values('Total_Void_Yards', ascending=False).head(20).reset_index(drop=True)
             elite_qbs.index += 1
             
@@ -342,13 +335,11 @@ elif page == "3. Scouting Reports":
                     Plays=('clv', 'count')
                 ).reset_index()
                 
-                # 2. Identify Best Rep (THE FIX)
+                # 2. Identify Best Rep
                 best_reps = grav_df.sort_values('clv', ascending=False).drop_duplicates('decoy_name')[['decoy_name', 'game_id', 'play_id']]
                 
                 # 3. Merge
                 elite_grav = wr_stats.merge(best_reps, on='decoy_name')
-                
-                # Filter & Sort
                 elite_grav = elite_grav[elite_grav['Plays'] >= 5].sort_values('Total_EPA_Generated', ascending=False).head(20).reset_index(drop=True)
                 elite_grav.index += 1
                 
@@ -364,28 +355,61 @@ elif page == "3. Scouting Reports":
             else:
                 st.error("⚠️ Decoy Data missing from results.")
 
-        # --- TAB 3: VICTIMS ---
+        # --- TAB 3: VICTIMS (LOGIC FIX) ---
         with tab3:
-            st.markdown("**Ranked by Total Void Allowed**")
+            st.markdown("""
+            **The Metric:** `Total Void Allowed` & `Panic Score`
+            * **Void Allowed:** Space given up *before* the throw.
+            * **Panic Score:** (100% - BIA Efficiency). Measures inefficient running paths while the ball is in the air.
+            """)
             
-            # 1. Calculate Stats
+            # SAFE AGGREGATION FUNCTION (Normalized 0-100)
+            def calculate_safe_panic(x):
+                valid_data = x.dropna()
+                if valid_data.empty: return 0.0
+                
+                # Get average efficiency (Range: -1.0 to 1.0)
+                avg_eff = valid_data.mean()
+                
+                # Normalize to 0-100 Scale
+                # 1.0 (Perfect) -> 0% Panic
+                # -1.0 (Disaster) -> 100% Panic
+                score = ((1.0 - avg_eff) / 2.0) * 100
+                
+                return score
+
+            # 1. Calculate Aggregated Stats
             def_stats = df_results.groupby(['player_name', 'player_position']).agg(
                 Total_Void_Allowed=('clv', 'sum'),
-                Times_Fooled=('clv', 'count')
+                Times_Fooled=('clv', 'count'),
+                Avg_Panic_Score=('bia_efficiency', calculate_safe_panic)
             ).reset_index()
             
             # 2. Identify Worst Rep (THE FIX)
-            # Sort by CLV Descending (Highest CLV = Worst Rep for defender)
+            # Sort by CLV Descending -> Drop Duplicates keeps the highest CLV row per player
+            # This matches exactly what calculate_clv.py saved to the cache.
             worst_reps = df_results.sort_values('clv', ascending=False).drop_duplicates('player_name')[['player_name', 'game_id', 'play_id', 'nfl_id']]
             
-            # 3. Merge
+            # 3. Merge Stats with Worst Rep Info
             victims = def_stats.merge(worst_reps, on='player_name')
             
             # Filter & Sort
             victims = victims[victims['Times_Fooled'] >= 20].sort_values('Total_Void_Allowed', ascending=False).head(20).reset_index(drop=True)
             victims.index += 1
             
-            st.dataframe(victims[['player_name', 'Total_Void_Allowed', 'Times_Fooled']], use_container_width=True)
+            # Fill NaNs for display safety
+            victims['Avg_Panic_Score'] = victims['Avg_Panic_Score'].fillna(0)
+            
+            st.dataframe(
+                victims.style.format({
+                    'Total_Void_Allowed': '{:,.1f}', 
+                    'Avg_Panic_Score': '{:.1f}%'
+                }).background_gradient(subset=['Avg_Panic_Score'], cmap="Reds", vmin=0, vmax=100),
+                use_container_width=True,
+                column_config={
+                    "Avg_Panic_Score": st.column_config.ProgressColumn("Panic Score", format="%.1f%%", min_value=0, max_value=100)
+                }
+            )
             
             st.divider()
             st.subheader("🎥 Watch the Tape")
@@ -394,14 +418,45 @@ elif page == "3. Scouting Reports":
             if st.button(f"Analyze {selected_vic}'s Worst Rep"):
                 row = victims[victims['player_name'] == selected_vic].iloc[0]
                 render_play_animation(row['game_id'], row['play_id'], victim_id=row['nfl_id'])
-                
+
 # ==========================================
-# PAGE 4: THE LAB
+# PAGE 4: THE LAB (PHYSICS VALIDATION)
 # ==========================================
 elif page == "4. The Lab (Physics)":
     st.title("🧪 The Physics of Deception")
-    if 'recovery_tax' in df_results.columns:
-        tax_df = df_results.dropna(subset=['recovery_tax'])
-        fig = px.scatter(tax_df, x='clv', y='recovery_tax', trendline="ols", trendline_color_override="red",
-                         title="Correlation: Mental Leak vs. Physical Recovery")
-        st.plotly_chart(fig, use_container_width=True)
+    
+    # Check if we have the new metrics
+    if 'bia_efficiency' in df_results.columns:
+        
+        tab_a, tab_b = st.tabs(["Reaction Delay", "Path Efficiency"])
+        
+        with tab_a:
+            st.subheader("Does Manipulation Cause Hesitation?")
+            st.markdown("We correlate **Pre-Throw Deception (CLV)** with **Post-Throw Reaction Delay**.")
+            
+            fig_delay = px.scatter(
+                df_results, x='clv', y='reaction_delay',
+                trendline="ols", trendline_color_override="red",
+                labels={"clv": "Pre-Throw Void Created (yds/s)", "reaction_delay": "Reaction Delay (seconds)"},
+                title="The Freeze Effect: High Deception = Slower Reaction",
+                opacity=0.3
+            )
+            st.plotly_chart(fig_delay, use_container_width=True)
+            
+        with tab_b:
+            st.subheader("The 'Banana Route' Effect")
+            st.markdown("Does getting fooled force defenders to take inefficient, curved paths to the ball?")
+            
+            fig_eff = px.scatter(
+                df_results, x='clv', y='bia_efficiency',
+                trendline="ols", trendline_color_override="red",
+                labels={"clv": "Pre-Throw Void Created (yds/s)", "bia_efficiency": "Ball-in-Air Path Efficiency (0-1)"},
+                title="The Stumble: High Deception = Poor Movement Efficiency",
+                opacity=0.3
+            )
+            # Invert Y axis because Lower Efficiency is the result of High CLV
+            fig_eff.update_yaxes(autorange="reversed") 
+            st.plotly_chart(fig_eff, use_container_width=True)
+            
+    else:
+        st.warning("⚠️ New Ball-In-Air metrics not found. Please run `calculate_clv.py` again.")
