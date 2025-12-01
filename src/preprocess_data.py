@@ -94,8 +94,7 @@ class ZoneCoverageETL:
 
         # Track gap and metadata issues for each play
         play_gap_info = {}
-        play_metadata_info = {}
-
+        
         # Stitching Logic with Frame Alignment Check
         if not output_df.empty:
             play_offsets = input_df.groupby(['game_id', 'play_id'])['frame_id'].max().reset_index()
@@ -109,7 +108,6 @@ class ZoneCoverageETL:
                 post_group = output_df[(output_df['game_id'] == gid) & (output_df['play_id'] == pid)]
                 has_gap = False
                 if not post_group.empty:
-                    
                     post_min = post_group['frame_id'].min()
                     if post_min != pre_max + 1:
                         has_gap = True
@@ -129,8 +127,60 @@ class ZoneCoverageETL:
 
         full_week = self.normalize_tracking_data(full_week)
         full_week = full_week.merge(context_df, on=['game_id', 'play_id'], how='left')
+        
+        # --- SELF-HEALING LOGIC: Calculate s, dir, o from coordinates ---
+        # Sort by play and frame to ensure correct diff calculation
+        full_week = full_week.sort_values(['game_id', 'play_id', 'nfl_id', 'frame_id'])
+        
+        # Calculate deltas
+        # Group by player/play to avoid diffing across boundaries
+        # Note: This relies on 'x' and 'y' being numeric. 'standardize_columns' handles this mostly, 
+        # but ensure no object types remain for x/y.
+        full_week['dx'] = full_week.groupby(['game_id', 'play_id', 'nfl_id'])['x'].diff()
+        full_week['dy'] = full_week.groupby(['game_id', 'play_id', 'nfl_id'])['y'].diff()
+        
+        # 1. Calculate Speed (s)
+        # NFL tracking is 10 frames/sec, so dt = 0.1s
+        # Speed = Distance / Time
+        full_week['s_derived'] = np.sqrt(full_week['dx']**2 + full_week['dy']**2) / 0.1
+        
+        # 2. Calculate Direction (dir)
+        # Angle of movement vector in degrees (0-360)
+        # arctan2 returns radians between -pi and pi.
+        full_week['dir_rad'] = np.arctan2(full_week['dy'], full_week['dx'])
+        full_week['dir_derived'] = np.degrees(full_week['dir_rad'])
+        
+        # Convert to 0-360 range (standard math: 0 is East, 90 is North)
+        # NFL 'dir' is usually 0=North, 90=East (Clockwise). 
+        # Standard Math 'dir' is 0=East, 90=North (Counter-Clockwise).
+        # Transformation: NFL_Dir = (90 - Math_Dir) % 360
+        full_week['dir_derived_nfl'] = (90 - full_week['dir_derived']) % 360
+        
+        # 3. Impute Missing Values
+        # Only overwrite if original is null
+        if 's' not in full_week.columns: full_week['s'] = np.nan
+        if 'dir' not in full_week.columns: full_week['dir'] = np.nan
+        if 'o' not in full_week.columns: full_week['o'] = np.nan # Start with empty 'o' if missing
+        
+        full_week['s'] = full_week['s'].fillna(full_week['s_derived'])
+        full_week['dir'] = full_week['dir'].fillna(full_week['dir_derived_nfl'])
+        
+        # 4. Orientation (o) Logic
+        # If moving fast (> 2 yds/s), assume o ≈ dir
+        mask_fast = full_week['s'] > 2.0
+        full_week.loc[mask_fast & full_week['o'].isna(), 'o'] = full_week.loc[mask_fast, 'dir']
+        
+        # If moving slow/stopped, forward fill last known orientation
+        # (Players turn heads slower than they cut)
+        full_week['o'] = full_week.groupby(['game_id', 'play_id', 'nfl_id'])['o'].ffill()
+        
+        # Cleanup temporary columns
+        full_week = full_week.drop(columns=['dx', 'dy', 's_derived', 'dir_rad', 'dir_derived', 'dir_derived_nfl'])
+        # ---------------------------------------------------------------
+
         final_cols = [c for c in self.keep_cols if c in full_week.columns]
         full_week = full_week[final_cols]
+        
         # Deduplication: keep last (post-throw) if overlap
         full_week = full_week.drop_duplicates(subset=['game_id', 'play_id', 'nfl_id', 'frame_id'], keep='last')
         full_week = full_week.sort_values(['game_id', 'play_id', 'frame_id'])
