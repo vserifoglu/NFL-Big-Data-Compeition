@@ -11,35 +11,30 @@ class EraserEngine:
         PHASE B: The Action.
         Calculates how distinct defenders close space on the targeted receiver.
         """
-        # 1. Filter for Post-Throw Phase only
+        # Filter for Post-Throw Phase only
         df_post = df[df['phase'] == 'post_throw'].copy()
         
-        # 2. Isolate the Targeted Receiver's path
+        # Isolate the Targeted Receiver's path
         # We need the receiver's X,Y for every frame to compare against defenders
         targets = df_post[df_post['player_role'] == 'Targeted Receiver'][
             ['game_id', 'play_id', 'frame_id', 'x', 'y']
         ].rename(columns={'x': 't_x', 'y': 't_y'})
 
-        # 3. Isolate Defenders
+        # Isolate Defenders
         defenders = df_post[df_post['player_role'] == 'Defensive Coverage'][
             ['game_id', 'play_id', 'nfl_id', 'frame_id', 'x', 'y']
         ]
 
-        # 4. Merge Defender + Target on (Game, Play, Frame)
-        # This gives us the geometry for every instant of the play
+        # Merge Defender + Target on (Game, Play, Frame)
         merged = defenders.merge(targets, on=['game_id', 'play_id', 'frame_id'], how='inner')
 
-        # 5. Calculate Dynamic Separation (Distance to Target)
+        # Calculate Dynamic Separation (Distance to Target)
         merged['dist_to_target'] = np.sqrt(
             (merged['x'] - merged['t_x'])**2 + 
             (merged['y'] - merged['t_y'])**2
         )
 
-        # ---------------------------------------------------------
-        # THE AGGREGATION LOGIC
-        # ---------------------------------------------------------
         def grade_defender(group):
-            # Sort by time to be safe
             group = group.sort_values('frame_id')
             
             # A. Get Start and End Distances
@@ -69,9 +64,6 @@ class EraserEngine:
         # Apply grouping per player per play
         metrics = merged.groupby(['game_id', 'play_id', 'nfl_id']).apply(grade_defender).reset_index()
 
-        # ---------------------------------------------------------
-        # MERGE CONTEXT (To Calculate CEOE later)
-        # ---------------------------------------------------------
         # We bring in the S_throw (dist_at_throw) from Phase A to complete the dataset
         final_df = metrics.merge(
             context_df[['game_id', 'play_id', 'dist_at_throw']], 
@@ -79,6 +71,6 @@ class EraserEngine:
             how='left'
         )
         
-        # Placeholder for CEOE (calculated in the Benchmarking step)
+        # Placeholder for CEOE
         final_df['ceoe_score'] = np.nan
         return self.output_schema.validate(final_df)

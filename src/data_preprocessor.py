@@ -7,7 +7,6 @@ from schema import PreprocessedSchema
 class DataPreProcessor:
     def __init__(self):
         self.output_schema = PreprocessedSchema
-        # We derive the columns from the schema keys to ensure we keep what we need
         self.keep_cols = list(self.output_schema.to_schema().columns.keys())
 
     def filter_context(self, supp_df):
@@ -68,19 +67,16 @@ class DataPreProcessor:
             # On Schedule (Not 1st & 20 or 2nd & 18)
             (supp_df['yards_to_go'] <= 10) &
             
-            # [UPDATED] Open Field (Between the 20s)
             # We use our new engineered column here
             (supp_df['yards_from_own_goal'].between(20, 80))
         )
         
-        # Valid Play AND Not a Screen AND Base Situation
         final_valid_mask = (
             valid_mask &
             (~screen_shovel_mask) &
             base_situation_mask
         )
 
-        # Return the filtered copy with the new columns attached
         return supp_df[final_valid_mask].copy()
 
     def _stitch_tracking_data(self, input_df, output_df, valid_keys):
@@ -102,6 +98,7 @@ class DataPreProcessor:
         output_df['event'] = None
         output_df.loc[output_df['frame_id'] == 1, 'event'] = 'pass_forward'
         
+        # TODO: move this to schema
         # Metadata Propagation (Players missing in Output get this from Input)
         meta_cols = ['game_id', 'play_id', 'nfl_id', 'player_name', 'jersey_number', 'player_position', 
                      'player_role', 'player_side', 'play_direction', 'absolute_yardline_number', 
@@ -158,23 +155,17 @@ class DataPreProcessor:
         """
         valid_keys = set(zip(context_df.game_id, context_df.play_id))
 
-        # 1. Stitch
         week_df = self._stitch_tracking_data(input_df, output_df, valid_keys)
 
-        # 2. Merge Context (Now includes win_prob and yards_from_own_goal)
         week_df = week_df.merge(context_df, on=['game_id', 'play_id'], how='inner')
 
-        # 3. Normalize
         week_df = self._normalize_coordinates(week_df)
 
-        # 4. Features (LOS calculation)
         week_df['los_x'] = week_df['ball_land_x'] - week_df['pass_length']
         week_df['week'] = int(week_num)
 
-        # 5. Clean
         week_df = self._clean_and_deduplicate(week_df)
 
-        # 6. Validate Output Schema
         return self.output_schema.validate(week_df)
 
     def run(self, data_stream: Generator[Tuple[str, pd.DataFrame, pd.DataFrame], None, None], 
@@ -182,12 +173,9 @@ class DataPreProcessor:
         """
         MAIN ENTRY POINT.
         """
-        # Step 1: Filter Context & Engineer Features (Win Prob, Field Position)
         clean_context = self.filter_context(raw_context_df)
         
         processed_chunks: List[pd.DataFrame] = []
-        
-        # Step 2: Stream Tracking Data
         for week_num, input_df, output_df in data_stream:
             
             clean_week_df = self.process_single_week(week_num, input_df, output_df, clean_context)
@@ -195,7 +183,6 @@ class DataPreProcessor:
             if not clean_week_df.empty:
                 processed_chunks.append(clean_week_df)
 
-            # Explicit Memory Management
             del input_df, output_df
             gc.collect()
 
