@@ -1,70 +1,78 @@
-# My approach / working idea.
-# Zone Coverage Auditing: The "Void Engine"
+# Zone Coverage Auditing: The "Reaction Void Engine"
 
-## 1. The Problem / Premise
+## 1. Problem & Premise
 
-In Zone Coverage, defensive success relies on structural discipline. A defender is responsible for a specific geometric area (a "Landmark"). However, standard NFL metrics often blame the defender closest to the catch for allowing a reception, even if that defender was covering for a teammate's mistake.
+Traditional defensive metrics often evaluate "closing speed" in a vacuum. A defender running 20 mph is considered elite, but raw speed fails to capture the context of the movement relative to the defensive scheme.
 
-The premise of this project is to identify the root cause of defensive breakdowns: **The Void**. We distinguish between:
+**The Problem:** Did the defender sprint because they were out of position (recovering from a mistake)? Or did they sprint to tighten an already perfect coverage window? Without context, "fast" looks the same as "panic."
 
-- **Chaos**: Scrambles/Broken Plays
-- **Structure**: Scheme Failure
+**The Premise:** A "Void" is not just generic empty space; it is an estimated offensive spatial advantage in the target zone (around the ball's landing point) established at the moment of release. The true measure of a defender's performance is evaluated relative to that void: do they measurably reduce the expected separation before the ball arrives?
 
-The goal is to detect moments where a defender drifts away from their assigned landmark in a structured dropback, creating an empty space that the offense exploits.
+**The Goal:** To differentiate between defenders who merely run fast ("Athletes") and defenders who systematically close structural gaps ("Erasers").
 
-## 2. Engineering Architecture
+In this work, a **Void Score** quantifies how favorable the space is for the offense at the throw, and an **Eraser Score** measures how much an individual defender reduces that score while the ball is in the air. This framework directly targets the competition's focus on understanding defender movement while the ball is in the air, using pre-throw context only as conditioning.
 
-We built a robust, production-grade Python pipeline designed for memory efficiency and data integrity.
 
-### A. Schema Validation (`schemas.py`)
+## 2. Methodology & Core Metrics
 
-We utilize **Pandera** to enforce "Data Quality Gates" at every step of the pipeline.
+This project utilizes the Big Data Bowl 2026 tracking data, specifically handling the separation between **Input (Pre-Throw, full physics)** and **Output (Post-Throw, ball-in-air)** files. We employ a **"Context vs. Action"** framework:
 
-- **Strict Filtering**: Only approved columns enter the engine; "junk data" is stripped immediately.
-- **Type Safety**: Ensures coordinate data are floats and IDs are integers before math is performed.
-- **Inheritance**: Schemas evolve from:
-  `RawTracking` → `Preprocessed` → `FeatureEngineered` → `VoidResult`
+### Phase A: The Context (The Void)
 
-### B. The Pipeline (`main.py` & `preprocessing.py`)
+Using the final frame of the Input file (The Throw), we calculate the **Void Context Score (S_throw)**.
 
-- **Lazy Loading**: We use Python Generators (`yield`) to stream data one week at a time, keeping RAM usage low even when processing millions of frames.
-- **Vectorization**: All geometric calculations use NumPy broadcasting (SIMD) instead of loops, allowing us to process full seasons of tracking data in seconds.
+**Definition:** The Euclidean distance between the targeted receiver and the nearest defender at the exact moment of the quarterback's release.
 
-## 3. Methodology & Physics
+**Classification:**
+- **High Void (>5 yds):** Large pre-throw separation; indicates favorable offensive spacing or an early execution gap.
+- **Tight Window (<2 yds):** Minimal pre-throw separation; defense maintains strong leverage at the start of the throw.
 
-### Step 1: Context-Aware Landmarks (`features.py`)
+### Phase B: The Action (The Movement)
 
-We do not use static zones. We calculate **Dynamic Landmarks** that adapt to the field context:
+Using the Output file (Ball-in-Air), we track the movement of the relevant defenders relative to the receiver and the landing spot.
 
-- **The "Red Zone Squash"**: As the field shrinks near the Goal Line, landmarks automatically compress (e.g., a "Deep 1/2" Safety drops 9 yards instead of 18).
-- **"Pattern Match" Logic**: We implemented **Dynamic Depth**. If a Zone Defender is deeper than their landmark (e.g., matching a vertical route), the engine adjusts their target depth to match their current depth, preventing false positives.
+**Measurement:** We calculate **S_arrival**, the separation distance between the targeted receiver and the nearest defender at the moment of ball arrival (or the final frame of the play).
 
-### Step 2: The Void Detector (`metrics.py`)
+## Core Metrics
 
-We utilize a **"Strict Liability"** algorithm that acts as a **Row Reducer**. It collapses the timeline to the exact moment of the catch and flags a "Void Penalty" only if:
+#### 1. Void Improvement Score (VIS)
 
-1. **Drift**: The defender is > 5.0 yards away from their assigned geometric landmark.
-2. **Absence**: The defender is > 3.0 yards away from the ball landing spot (Catch Point).
-3. **Opportunity**: The pass was completed (or highly targetable).
+Measures the net reduction of the offensive spatial advantage during the ball's flight.
+VIS = S_throw − S_arrival
 
-## 4. Output Data Model
 
-The pipeline generates two distinct datasets for different use cases:
+- **Positive (+5.0):** The defender "healed" the coverage, closing a 5-yard gap to 0 yards.
+- **Negative (−2.0):** The defender lost ground, allowing the separation to grow.
 
-| File Name                  | Granularity       | Purpose                                                                 |
-| -------------------------- | ----------------- | ----------------------------------------------------------------------- |
-| `void_analysis_summary.csv` | 1 Row per Play    | **Analytical Reporting**. Contains the "Grade" for the play, EPA damage, and drift distance. Used for leaderboards and regression analysis. |
-| `master_animation_data.csv` | 1 Row per Frame   | **Visualization**. Contains the full trajectory (x, y, s, dir) merged with the Void Penalty flags. Used to render animations where "guilty" defenders turn red. |
+#### 2. Closing Efficiency Over Expectation (CEOE)
 
-## 5. The Value (Big Data Bowl Context)
+A role-aware metric that evaluates the rate of closure relative to peer performance.
 
-This project scores highly in three categories:
+**Definition:** The change in separation per second of flight time, compared to the league average for defenders with the same **Role** (e.g., Linebacker vs. Cornerback) and **Coverage Type** (Man vs. Zone) starting with a similar Void Context.
 
-### Football Score
-It answers the coach's question: "Did we lose this play because the scheme failed, or because Player X was undisciplined?" It quantifies the EPA cost of indiscipline.
+**Why it matters:** It normalizes for hangtime. Closing 5 yards on a "rainbow" deep ball is easier than closing 5 yards on a quick slant; CEOE accounts for this by measuring efficiency against the clock.
 
-### Data Science Score
-It solves the "Pattern Matching" problem using dynamic geometry and creates a novel metric (`void_penalty`) that correlates with negative defensive outcomes.
 
-### Engineering Score
-The pipeline demonstrates professional MLOps practices: Schema validation, memory-safe streaming, modular architecture, and vectorized computation.
+## 3. Expected Achievable Outcomes
+
+By the submission deadline, this project will deliver:
+
+### The "Base Subset" Dataset
+A rigorously filtered dataset isolating "Standard Football" situations:
+- **Down:** 1st or 2nd Down
+- **Game Context:** Win Probability between 20-80%
+- **Field Position:** Open Field (removing end-zone/sideline effects)
+
+This removes statistical noise like Hail Marys, desperation plays, or "Prevent" defense scenarios.
+
+### The Erasure Matrix
+A classification system grouping defensive plays into four quadrants based on pre-throw separation and closing performance:
+
+| Pre-Throw Context | Great Closing Performance | Poor Closing Performance |
+|-------------------|---------------------------|--------------------------|
+| **High Void** (>5 yds) | **The Erasers:** Fixing broken plays | **The Liabilities:** Compounding errors |
+| **Tight Window** (<2 yds) | **The Lockdown:** Maintaining dominance | **The Lost Step:** Squandering position |
+
+### Visualizations
+1. **Scatter Plot of Erasure:** Visualizing `S_throw` vs. `S_arrival` to identify elite performers and patterns in closing ability.
+2. **Closing Efficiency Race Charts:** Tracking distance-to-catch over time to visualize how defenders close (or fail to close) separation during the ball's flight.
