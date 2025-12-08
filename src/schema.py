@@ -23,6 +23,7 @@ class RawSuppSchema(pa.DataFrameModel):
     possession_team: Series[str]
     yardline_side: Series[str] = pa.Field(nullable=True)
     yardline_number: Series[int] = pa.Field(ge=0, le=50) 
+    defensive_team: Series[str] = pa.Field(nullable=True)
     
     # --- Win Probability (Used for filters) ---
     pre_snap_home_team_win_probability: Series[float] = pa.Field(nullable=True)
@@ -54,6 +55,7 @@ class RawTrackingSchema(pa.DataFrameModel):
 
     # --- Normalization Anchors ---
     play_direction: Series[str] 
+    player_name: Series[str]
     absolute_yardline_number: Series[int] = pa.Field(ge=0, le=120, nullable=True)
     
     # --- Player Attributes ---
