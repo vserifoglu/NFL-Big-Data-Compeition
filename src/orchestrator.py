@@ -35,7 +35,9 @@ def run_full_pipeline():
     print("[3/7] Running Physics Engine (Kinematics)...")
     physics_engine = PhysicsEngine()
     df_physics = physics_engine.derive_metrics(df_clean)
-    del df_clean; gc.collect() 
+    
+    del df_clean
+    gc.collect() 
 
     # 4. CONTEXT (Phase A)
     # TODO: Note this is changing the dataframe entirely - df_physics is our animation dataset.

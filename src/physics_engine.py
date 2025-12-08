@@ -22,10 +22,19 @@ class PhysicsEngine:
         def calculate_sg(group):
             # Short Track Handling
             if len(group) < WINDOW:
-                return pd.DataFrame({
-                    's_derived': np.nan, 
-                    'a_derived': np.nan
-                }, index=group.index)
+                # Simple Euclidean distance change / 0.1s
+                dx = group['x'].diff() 
+                dy = group['y'].diff()
+                
+                dist = np.sqrt(dx**2 + dy**2)
+                s = dist / 0.1  # Speed in yds/s
+                
+                # Acceleration is diff of speed
+                a = s.diff().fillna(0) / 0.1
+                
+                return pd.DataFrame(
+                    {'s_derived': s, 'a_derived': a}, 
+                    index=group.index)
             
             # 1. First Derivative (Velocity)
             vx = savgol_filter(group['x'], window_length=WINDOW, polyorder=POLY, deriv=1, delta=0.1)
