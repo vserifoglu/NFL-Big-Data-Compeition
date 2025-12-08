@@ -218,7 +218,7 @@ class AnalysisReportSchema(pa.DataFrameModel):
     player_role: Series[str]
     
     dist_at_throw: Series[float] = pa.Field(ge=0, nullable=True)
-
+    dist_at_arrival: Series[float] = pa.Field(ge=0, nullable=True)
     # Context
     void_type: Series[str] = pa.Field(isin=["High Void", "Tight Window", "Neutral"], nullable=True)
     
