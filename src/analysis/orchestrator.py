@@ -16,18 +16,18 @@ def main():
     cast_dict = story.cast_archetypes()
     
     # TODO: Debugging - delete for prod.
-    # print("Selected Plays:")
-    # for role, meta in cast_dict.items():
-    #     if meta:
-    #         print(f"   -> {role}: ID {meta['nfl_id']} (VIS: {meta['vis_score']:.1f})")
-    #     else:
-    #         print(f"   -> {role}: [NO CANDIDATE FOUND]")
+    print("Selected Plays:")
+    for role, meta in cast_dict.items():
+        if meta:
+            print(f"   -> {role}: ID {meta['nfl_id']} (VIS: {meta['vis_score']:.1f})")
+        else:
+            print(f"   -> {role}: [NO CANDIDATE FOUND]")
 
     # Generates Figures 1, 2, 3
-    # viz = StoryVisualEngine(SUMMARY, ANIMATION, OUTPUT)
-    # viz.plot_eraser_landscape(cast_dict) 
-    # viz.plot_race_charts(cast_dict)
-    # viz.plot_coverage_heatmap()
+    viz = StoryVisualEngine(SUMMARY, ANIMATION, OUTPUT)
+    viz.plot_eraser_landscape(cast_dict) 
+    viz.plot_race_charts(cast_dict)
+    viz.plot_coverage_heatmap()
 
     # Animation
     animator = AnimationEngine(SUMMARY, ANIMATION, OUTPUT)
