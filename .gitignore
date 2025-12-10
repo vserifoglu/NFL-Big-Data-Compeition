@@ -27,11 +27,6 @@ wheels/
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
 
-# Data (too large for git)
-data/
-*.csv
-*.parquet
-
 # Outputs
 outputs/results/*.csv
 outputs/figures/*.png
@@ -53,3 +48,6 @@ Thumbs.db
 !outputs/figures/.gitkeep
 !outputs/results/.gitkeep
 !data/.gitkeep
+
+# Ignore all CSV files in data and subfolders
+data/**/*.csv
