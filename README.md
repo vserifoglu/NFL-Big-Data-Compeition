@@ -29,7 +29,7 @@ This project introduces the "Void Engine" framework for grading defender effort 
 │   ├── pipeline_diagram.png
 │   └── ...
 ├── llm_knowledge_base/
-│   └── everything_combined.txt
+│   └── file_combiner.py
 ├── notebooks/
 │   ├── EDA.ipynb
 │   ├── formula_and_data_validation.ipynb
