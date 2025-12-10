@@ -11,14 +11,12 @@ class DataExporter:
 
     def export_results(self, df_summary: pd.DataFrame, df_frames: pd.DataFrame):
         """
-        PHASE D: EXPORT
         1. Validates & Saves the Analytical Report.
         2. Validates & Merges Scores for Animation.
         3. Saves the Master Animation File.
         """
         print(f"   -> Output Directory: {self.output_dir}")
 
-        # validate report summary
         self.report_schema.validate(df_summary)
 
         summary_path = os.path.join(self.output_dir, 'eraser_analysis_summary.csv')
@@ -37,7 +35,6 @@ class DataExporter:
             how='left'
         )
         
-        # validate all animation data points 
         self.full_animation.validate(df_animation)
 
         final_path = os.path.join(self.output_dir, 'master_animation_data.csv')

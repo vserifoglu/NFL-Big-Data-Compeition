@@ -8,23 +8,17 @@ class ContextEngine:
 
     def calculate_void_context(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        PHASE A: Calculates S_throw.
         capture ALL players at the moment of the throw.
         """
-        # 1. Filter for Pre-Throw phase
+        # Filter for Pre-Throw phase
         pre_throw_mask = df['phase'] == 'pre_throw'
         df_pre = df[pre_throw_mask].copy()
 
-        # IDENTIFY THE SNAPSHOT FRAME
         # we calculate the MAX frame_id for every play
         last_frame_ids = df_pre.groupby(['game_id', 'play_id'])['frame_id'].transform('max')
         
         # We keep rows where the frame_id matches the last frame of that play
         throw_frames = df_pre[df_pre['frame_id'] == last_frame_ids].copy()
-
-        # TODO: delete
-        # avg_players = throw_frames.groupby(['game_id', 'play_id']).size().mean()
-        # print(f"   DEBUG: Avg players captured per snapshot: {avg_players:.1f} (Should be > 1)")
 
         # Split into Target vs. Defenders
         targets = throw_frames[throw_frames['player_role'].astype(str).str.strip() == 'Targeted Receiver'][
@@ -35,10 +29,8 @@ class ContextEngine:
             ['game_id', 'play_id', 'nfl_id', 'x', 'y']
         ].rename(columns={'nfl_id': 'def_nfl_id', 'x': 'd_x', 'y': 'd_y'})
 
-        # Cartesian Product (Merge)
         merged = defenders.merge(targets, on=['game_id', 'play_id'], how='inner')
 
-        # Calculate Euclidean Distance
         merged['dist'] = np.sqrt(
             (merged['d_x'] - merged['t_x'])**2 + 
             (merged['d_y'] - merged['t_y'])**2

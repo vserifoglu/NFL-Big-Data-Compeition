@@ -3,10 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
-import matplotlib.patches as patches
 from scipy.interpolate import UnivariateSpline
 
-# Set style for professional report visuals
 sns.set_theme(style="whitegrid", context="talk")
 plt.rcParams['font.family'] = 'sans-serif'
 
@@ -16,59 +14,54 @@ class StoryVisualEngine:
         self.summary_df = pd.read_csv(summary_path)
         
         print(f"   [VizGen] Loading Animation Data (Lazy): {animation_path}...")
-        # We load specific columns to keep memory low
         req_cols = ['game_id', 'play_id', 'nfl_id', 'frame_id', 'player_role', 'x', 'y']
         self.frames_df = pd.read_csv(animation_path, usecols=req_cols)
         
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
         
-        # Standardize colors
         self.quad_colors = {
-            'Eraser': '#2ecc71',      # Green
-            'Lockdown': '#3498db',    # Blue
-            'Lost Step': '#f1c40f',   # Yellow
-            'Liability': '#e74c3c',   # Red
-            'Neutral': '#95a5a6'
+            'The Eraser': '#1e8449',      # Dark Green (Elite)
+            'The Rally': '#82e0aa',       # Light Green (Active Zone)
+            'The Blanket': '#95a5a6',     # Grey (Maintenance)
+            'The Liability': '#e74c3c',   # Red (Lost Ground)
+            'Neutral': '#ecf0f1'
         }
 
-    # =========================================
-    # VISUAL 1: ERASER LANDSCAPE (SCATTER)
-    # =========================================
     def plot_eraser_landscape(self, cast_dict):
-        """
-        Plots S_throw vs S_arrival.
-        Annotates the specific plays identified by StoryEngine.
-        """
-        print("   [VizGen] Generating V1: Eraser Landscape...")
         df = self.summary_df.copy()
         
-        # Apply Quadrant Logic for Coloring
         conditions = [
-            (df['p_dist_at_throw'] >= 3.0) & (df['dist_at_arrival'] <= 1.5), # Eraser
-            (df['p_dist_at_throw'] < 3.0) & (df['dist_at_arrival'] <= 1.5),  # Lockdown
-            (df['p_dist_at_throw'] < 3.0) & (df['dist_at_arrival'] > 1.5),   # Lost Step
-            (df['p_dist_at_throw'] >= 3.0) & (df['dist_at_arrival'] > 1.5)   # Liability
+            (df['vis_score'] > 2.0),                     # The Eraser
+            (df['vis_score'].between(0.5, 2.0)),         # The Rally
+            (df['vis_score'].between(-0.5, 0.5)),        # The Blanket
+            (df['vis_score'] < -0.5)                     # The Liability
         ]
-        choices = ['Eraser', 'Lockdown', 'Lost Step', 'Liability']
+
+        choices = ['The Eraser', 'The Rally', 'The Blanket', 'The Liability']
         df['quadrant_plot'] = np.select(conditions, choices, default='Neutral')
         
         fig, ax = plt.subplots(figsize=(12, 12))
         
-        # 1. Main Scatter
+        # Main Scatter
+        hue_order = ['The Eraser', 'The Rally', 'The Blanket', 'The Liability']
+        
         sns.scatterplot(
             data=df, x='p_dist_at_throw', y='dist_at_arrival',
             hue='quadrant_plot', palette=self.quad_colors,
+            hue_order=hue_order,
             alpha=0.6, s=40, linewidth=0, ax=ax
         )
         
-        # 2. Reference Lines
+        # Reference Lines
         ax.plot([0, 25], [0, 25], 'k--', lw=2, alpha=0.3, label='Break Even (VIS=0)')
-        ax.axvline(x=3.0, color='gray', linestyle=':', lw=2)
-        ax.axhline(y=1.5, color='gray', linestyle=':', lw=2)
+        
+        # Add the Threshold visual aids (The "Buffer Zone")
+        x_vals = np.array([0, 25])
+        ax.plot(x_vals, x_vals - 0.5, color='gray', linestyle=':', lw=1, alpha=0.5)
+        ax.plot(x_vals, x_vals + 0.5, color='gray', linestyle=':', lw=1, alpha=0.5)
 
-        # 3. Annotations (Driven by StoryEngine)
-        # We iterate through the 'Cast' dictionary
+        # Annotations
         for role, play_meta in cast_dict.items():
             if play_meta is None: continue
             
@@ -89,28 +82,21 @@ class StoryVisualEngine:
                             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1))
 
         ax.set_title('The Eraser Landscape: Recovery vs. Result', fontsize=18, fontweight='bold', pad=20)
-        ax.set_xlabel('Player Distance at Throw (The Mess)', fontsize=14, fontweight='bold')
-        ax.set_ylabel('Distance at Arrival (The Finish)', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Start Distance (The Mess)', fontsize=14, fontweight='bold')
+        ax.set_ylabel('End Distance (The Finish)', fontsize=14, fontweight='bold')
         ax.set_xlim(0, 20)
         ax.set_ylim(0, 20)
-        ax.legend(title='Quadrants', loc='upper right')
+        ax.legend(title='Defensive Role', loc='upper right')
         
         output_path = os.path.join(self.output_dir, 'V1_Eraser_Landscape.png')
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
 
-    # =========================================
-    # VISUAL 2: RACE CHARTS (TRAJECTORIES)
-    # =========================================
-    def plot_race_charts(self, cast_dict):
-        """
-        Plots the distance-over-time for the 4 archetypes selected by StoryEngine.
-        """
-        print("   [VizGen] Generating V2: Race Charts...")
-        
-        fig, axes = plt.subplots(2, 2, figsize=(16, 12))  # Removed sharey=True for independent axes
+    def plot_race_charts(self, cast_dict):        
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12)) 
         axes = axes.flatten()
-        quad_order = ['Eraser', 'Lockdown', 'Liability', 'Lost Step']
+        
+        quad_order = ['The Eraser', 'The Rally', 'The Blanket', 'The Liability']
 
         # Legend Elements
         legend_elements = [
@@ -123,18 +109,19 @@ class StoryVisualEngine:
         for i, quad_name in enumerate(quad_order):
             ax = axes[i]
             play_meta = cast_dict.get(quad_name)
-            color = self.quad_colors.get(quad_name, 'grey')
-
-            # Handle Missing Cast Member
+            
+            # Default handling if play_meta is missing
             if play_meta is None:
-                ax.set_title(f"{quad_name}", fontsize=16, fontweight='bold', color=color)
-                ax.text(0.5, 0.5, "No Candidate Found", ha='center')
+                ax.text(0.5, 0.5, f"No Data for {quad_name}", ha='center', va='center')
                 continue
+
+            color = self.quad_colors.get(quad_name, 'grey')
 
             # Title with VIS Score
             vis_val = play_meta['vis_score']
             sign = "+" if vis_val > 0 else ""
-            ax.set_title(f"{quad_name}\n(VIS: {sign}{vis_val:.1f} yds)", fontsize=16, fontweight='bold', color=color)
+            ax.set_title(f"{quad_name}\n(VIS: {sign}{vis_val:.1f} yds)", 
+                         fontsize=16, fontweight='bold', color=color)
 
             # Get Tracking Data
             play_df = self.frames_df[
@@ -152,37 +139,30 @@ class StoryVisualEngine:
             merged['dist'] = np.sqrt((merged['x_d'] - merged['x_t'])**2 + (merged['y_d'] - merged['y_t'])**2)
             merged['time_sec'] = (merged['frame_id'] - merged['frame_id'].min()) * 0.1
 
-            # Apply spline smoothing to reduce tracking noise (s=50 recommended balance)
+            # Spline Smoothing
             time_arr = merged['time_sec'].values
             dist_arr = merged['dist'].values
-            
-            # Spline needs at least 4 points and unique x values
             if len(time_arr) >= 4:
                 try:
                     spline = UnivariateSpline(time_arr, dist_arr, s=50)
                     smooth_dist = spline(time_arr)
                 except:
-                    smooth_dist = dist_arr  # Fallback to raw if spline fails
+                    smooth_dist = dist_arr
             else:
                 smooth_dist = dist_arr
-            
             merged['smooth_dist'] = smooth_dist
             
-            # Calculate axis limits early (needed for annotations)
             max_dist = merged['smooth_dist'].max()
             max_time = merged['time_sec'].max()
 
             # PLOT LOGIC
-            # 1. Contested Zone Shading (0-1.5 yards) - light gray background
             ax.axhspan(0, 1.5, color='#d5d5d5', alpha=0.4, zorder=0)
             ax.text(max_time * 0.95, 0.75, 'CONTESTED\nZONE', ha='right', va='center',
                    fontsize=8, color='#666666', style='italic', alpha=0.8)
             
-            # 2. Smoothed Line & Fill
             ax.plot(merged['time_sec'], merged['smooth_dist'], lw=4, color=color, alpha=0.9)
             ax.fill_between(merged['time_sec'], merged['smooth_dist'], 0, color=color, alpha=0.1)
 
-            # 3. Markers (use smoothed values for consistency)
             start = merged.iloc[0]
             end = merged.iloc[-1]
             
@@ -192,53 +172,14 @@ class StoryVisualEngine:
             ax.scatter(end['time_sec'], end['smooth_dist'], color=color, s=150, marker='X', zorder=5, edgecolors='white', lw=2)
             ax.annotate('ARRIVAL', (end['time_sec'], end['smooth_dist']), xytext=(5, 5), textcoords='offset points', fontsize=9, fontweight='bold', color=color)
 
-            # 4. Closing Rate annotation (yards closed per second)
-            flight_time = end['time_sec'] - start['time_sec']
-            closing_rate = (start['smooth_dist'] - end['smooth_dist']) / flight_time if flight_time > 0 else 0
-            rate_sign = "+" if closing_rate < 0 else "−"  # Negative = opening up, Positive = closing
-            
-            # Position rate annotation at midpoint of trajectory
-            mid_idx = len(merged) // 2
-            mid_time = merged.iloc[mid_idx]['time_sec']
-            mid_dist = merged.iloc[mid_idx]['smooth_dist']
-            
-            if quad_name in ['Eraser', 'Lockdown']:
-                # Show closing rate for closers
-                ax.annotate(f'{rate_sign}{abs(closing_rate):.1f} yds/sec', 
-                           (mid_time, mid_dist), xytext=(10, -15), textcoords='offset points',
-                           fontsize=10, fontweight='bold', color=color,
-                           bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor=color, alpha=0.8),
-                           arrowprops=dict(arrowstyle='->', color=color, lw=1.5))
-            
-            # 5. Decision Point markers for Liability & Lost Step (find inflection point)
-            if quad_name in ['Liability', 'Lost Step']:
-                # Find the minimum point (where trajectory changes direction)
-                smooth_arr = merged['smooth_dist'].values
-                min_idx = np.argmin(smooth_arr)
-                
-                # Only mark if it's not at the start or end (true inflection)
-                if 2 < min_idx < len(smooth_arr) - 2:
-                    inflection_time = merged.iloc[min_idx]['time_sec']
-                    inflection_dist = smooth_arr[min_idx]
-                    
-                    # Decision point marker
-                    ax.scatter(inflection_time, inflection_dist, color='#e67e22', s=200, 
-                              marker='o', zorder=6, edgecolors='white', lw=2)
-                    
-                    label = "Lost leverage" if quad_name == 'Liability' else "Lost balance"
-                    ax.annotate(f'⚠ {label}', (inflection_time, inflection_dist), 
-                               xytext=(8, 12), textcoords='offset points',
-                               fontsize=9, fontweight='bold', color='#c0392b',
-                               bbox=dict(boxstyle='round,pad=0.2', facecolor='#fdebd0', edgecolor='#e67e22', alpha=0.9))
-            
-            # Store flight time for bottom annotation
-            play_meta['flight_time'] = flight_time
-            
-            # Formatting with dynamic limits
+            # Flight Time (Save for footer)
+            play_meta['flight_time'] = end['time_sec'] - start['time_sec']
+
+            # Formatting
             ax.axhline(1.5, color='gray', linestyle=':', lw=2)
             ax.axhline(0, color='black', lw=1)
-            ax.set_ylim(-0.5, max(max_dist * 1.15, 5))  # 15% padding, minimum 5 yards
-            ax.set_xlim(0, max_time + 0.3)  # Small padding on x-axis
+            ax.set_ylim(-0.5, max(max_dist * 1.15, 5)) 
+            ax.set_xlim(0, max_time + 0.3)
             ax.grid(True, alpha=0.3)
             
             if i in [2, 3]: ax.set_xlabel('Seconds After Throw', fontsize=12, fontweight='bold')
@@ -247,7 +188,7 @@ class StoryVisualEngine:
         # Global Legend
         fig.legend(handles=legend_elements, loc='lower center', ncol=4, bbox_to_anchor=(0.5, -0.02), frameon=False, fontsize=11)
         
-        # Flight Time annotation at bottom
+        # Flight Time annotation
         flight_parts = []
         for quad_name in quad_order:
             meta = cast_dict.get(quad_name)
@@ -256,28 +197,18 @@ class StoryVisualEngine:
         
         if flight_parts:
             flight_text = "Ball Flight Time — " + " | ".join(flight_parts)
-            fig.text(0.5, -0.06, flight_text, ha='center', va='top', fontsize=10, 
-                    color='#555555', style='italic')
+            fig.text(0.5, -0.06, flight_text, ha='center', va='top', fontsize=10, color='#555555', style='italic')
         
-        plt.tight_layout(rect=[0, 0.02, 1, 1])  # Leave room for bottom annotations
-        
+        plt.tight_layout(rect=[0, 0.02, 1, 1])
         output_path = os.path.join(self.output_dir, 'V2_Race_Charts.png')
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
 
-    # =========================================
-    # VISUAL 3: HEATMAP
-    # =========================================
     def plot_coverage_heatmap(self):
         """
         Average VIS by Route Depth vs Coverage Type.
         """
-        print("   [VizGen] Generating V3: Coverage Heatmap...")
         df = self.summary_df.copy()
-
-        if 'pass_length' not in df.columns or 'team_coverage_type' not in df.columns:
-            print("      [!] Skipping Heatmap: Columns missing.")
-            return
 
         # Binning
         bins = [-5, 5, 10, 15, 25, 100]
@@ -313,33 +244,24 @@ class StoryVisualEngine:
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
 
-    # =========================================
-    # VISUAL 4: EPA/YAC IMPACT CHART
-    # =========================================
     def plot_effort_impact_chart(self):
         """
         Slope chart showing Effort → Outcome (EPA/YAC saved).
         Ties the story together: Context → Effort → Result.
         """
-        print("   [VizGen] Generating V4: Effort Impact Chart...")
         df = self.summary_df.copy()
         
-        # 1. Filter for Completions Only (where damage occurs)
         completed = df[df['pass_result'] == 'C'].copy()
-        
-        if completed.empty:
-            print("      [!] Skipping Impact Chart: No completions found.")
-            return
-        
-        # 2. Derive YAC
+
+        # Derive YAC
         completed['yac'] = completed['yards_gained'] - completed['pass_length']
         
-        # 3. Create Start Distance bands
+        # Create Start Distance bands
         dist_bins = [0, 3, 6, 10, 100]
         dist_labels = ['Tight\n(0-3 yds)', 'Medium\n(3-6 yds)', 'High Void\n(6-10 yds)', 'Exempt\n(10+ yds)']
         completed['start_band'] = pd.cut(completed['p_dist_at_throw'], bins=dist_bins, labels=dist_labels)
         
-        # 4. Calculate VIS quartiles WITHIN each start band
+        # Calculate VIS quartiles WITHIN each start band
         def get_quartile_label(group):
             q25 = group['vis_score'].quantile(0.25)
             q75 = group['vis_score'].quantile(0.75)
@@ -353,17 +275,14 @@ class StoryVisualEngine:
         
         completed = completed.groupby('start_band', group_keys=False, observed=False).apply(get_quartile_label)
         
-        # 5. Filter to only Q1 and Q4 for clean comparison
         extremes = completed[completed['effort_bucket'].isin(['Low Effort', 'High Effort'])]
-        
-        # 6. Aggregate by band and effort
         impact_data = extremes.groupby(['start_band', 'effort_bucket'], observed=False).agg(
             avg_epa=('expected_points_added', 'mean'),
             avg_yac=('yac', 'mean'),
             count=('play_id', 'count')
         ).reset_index()
         
-        # 7. Create the figure with two subplots (EPA and YAC)
+        # Create the figure with two subplots (EPA and YAC)
         fig, axes = plt.subplots(1, 2, figsize=(16, 8))
         
         bands = ['Tight\n(0-3 yds)', 'Medium\n(3-6 yds)', 'High Void\n(6-10 yds)', 'Exempt\n(10+ yds)']
@@ -452,4 +371,3 @@ class StoryVisualEngine:
         output_path = os.path.join(self.output_dir, 'V4_Effort_Impact_Chart.png')
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
-        print(f"      -> Saved: {output_path}")

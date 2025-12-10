@@ -5,7 +5,6 @@ class TableGenerator:
     def __init__(self, summary_path: str):
         self.df = pd.read_csv(summary_path)
         
-        # Standardize Role Filtering (Focus on coverage players)
         # We exclude Pass Rushers who occasionally drop into coverage
         self.df = self.df[self.df['player_role'].isin([
             'Defensive Coverage', 'Cornerback', 'Safety', 'Linebacker'])]
@@ -18,9 +17,6 @@ class TableGenerator:
         df = self.df.copy()
 
         # Define Thresholds
-        # OPEN: > 3 yards at throw (A bit tighter than "High Void" to capture more data)
-        # CLOSED: < 1.5 yards at arrival
-        
         OPEN_THRESH = 3.0
         CLOSED_THRESH = 1.5
 
@@ -34,8 +30,7 @@ class TableGenerator:
         choices = ['Eraser (The Cleanup)', 'Lockdown (The Blanket)', 'Lost Step (The Beat)', 'Liability (The Void)']
         
         df['quadrant'] = np.select(conditions, choices, default='Neutral/Zone Drift')
-
-        # Aggregation
+        
         summary = df.groupby('quadrant').agg(
             play_count=('play_id', 'count'),
             avg_vis=('vis_score', 'mean'),
@@ -49,12 +44,12 @@ class TableGenerator:
 
     def generate_shrunk_leaderboard(self, min_snaps=15, prior_m=20):
         """
-        TASK 2: Bayesian Shrinkage with Names.
+        Bayesian Shrinkage with Names.
         """
-        # 1. Positional Priors
+        # Positional Priors
         pos_stats = self.df.groupby('player_position')['ceoe_score'].mean().to_dict()
 
-        # 2. Add player_name to grouping
+        # Add player_name to grouping
         group_cols = ['nfl_id', 'player_position', 'player_role']
         if 'player_name' in self.df.columns:
             group_cols.insert(1, 'player_name')
@@ -66,7 +61,7 @@ class TableGenerator:
             avg_start=('p_dist_at_throw', 'mean')
         ).reset_index()
 
-        # 3. Shrinkage
+        # Shrinkage
         def apply_shrinkage(row):
             prior_mu = pos_stats.get(row['player_position'], 0.0)
             n = row['snaps']
@@ -76,9 +71,7 @@ class TableGenerator:
 
         player_stats['shrunk_ceoe'] = player_stats.apply(apply_shrinkage, axis=1)
 
-        # 4. Filter & Sort
-        qualified = player_stats[player_stats['snaps'] >= min_snaps].copy()
-        
+        qualified = player_stats[player_stats['snaps'] >= min_snaps].copy()     
         qualified['shrunk_ceoe'] = qualified['shrunk_ceoe'].round(3)
         qualified['raw_ceoe'] = qualified['raw_ceoe'].round(3)
         qualified['avg_vis'] = qualified['avg_vis'].round(2)
@@ -90,42 +83,39 @@ class TableGenerator:
 
     def generate_damage_control_validation(self):
         """
-        TASK 3: Damage Control Validation (YAC & EPA).
+        Damage Control Validation (YAC & EPA).
+
         Hypothesis: On COMPLETED passes, higher VIS (better closing) 
         should correlate with LOWER YAC and LOWER EPA (better for defense).
         """
         df = self.df.copy()
         
-        # 1. Filter for Completions Only (Where YAC exists)
+        # Filter for Completions Only (Where YAC exists)
         completed = df[df['pass_result'] == 'C'].copy()
-        
-        if completed.empty:
-            return "No completions found in dataset."
 
-        # 2. Derive YAC
+        # Derive YAC
         # YAC = Total Yards - Air Yards
         completed['yac'] = completed['yards_gained'] - completed['pass_length']
         
-        # 3. Bin Start Distance (Context Control)
+        # Bin Start Distance (Context Control)
         # We only care about Medium/High Voids where YAC is a threat.
         bins = [3, 6, 10, 100]
         labels = ['Medium (3-6)', 'High Void (6-10)', 'Deep (10+)']
         completed['start_band'] = pd.cut(completed['p_dist_at_throw'], bins=bins, labels=labels)
         
-        # 4. Bin VIS Score (The Independent Variable)
+        # Bin VIS Score (The Independent Variable)
         # Low Effort vs. High Effort closing
         vis_bins = [-np.inf, 0, 3, np.inf]
         vis_labels = ['Negative (Lost Gap)', 'Moderate (0-3)', 'High Erasure (3+)']
         completed['vis_bucket'] = pd.cut(completed['vis_score'], bins=vis_bins, labels=vis_labels)
 
-        # 5. Aggregate
         damage_control = completed.groupby(['start_band', 'vis_bucket'], observed=False).agg(
             count=('play_id', 'count'),
             avg_yac=('yac', 'mean'),
             avg_epa=('expected_points_added', 'mean') # Lower is better for defense
         ).reset_index()
 
-        # 6. Pivot for YAC (The Primary Proof)
+        # Pivot for YAC (The Primary Proof)
         yac_pivot = damage_control.pivot(index='start_band', columns='vis_bucket', values='avg_yac')
         
         # Calculate the "Savings" (Difference between Negative VIS and High Erasure)
@@ -135,25 +125,22 @@ class TableGenerator:
 
     def generate_epa_savings(self):
         """
-        TABLE 5: EPA Savings Table (Quartile Approach).
+        EPA Savings Table (Quartile Approach).
+
         Shows how much Expected Points high-effort defenders save vs low-effort defenders.
-        Uses within-band quartiles to avoid structural NaNs.
+        
         Focuses on COMPLETED passes where EPA damage occurs.
         """
         df = self.df.copy()
         
-        # 1. Filter for Completions Only (where EPA damage occurs)
         completed = df[df['pass_result'] == 'C'].copy()
         
-        if completed.empty:
-            return "No completions found in dataset."
-        
-        # 2. Create Start Distance bands
+        # Create Start Distance bands
         dist_bins = [0, 3, 6, 10, 100]
         dist_labels = ['Tight (0-3)', 'Medium (3-6)', 'High Void (6-10)', 'Exempt (10+)']
         completed['start_band'] = pd.cut(completed['p_dist_at_throw'], bins=dist_bins, labels=dist_labels)
         
-        # 3. Calculate VIS quartiles WITHIN each start band
+        # Calculate VIS quartiles WITHIN each start band
         # This avoids NaNs by making "effort" relative to what's possible from each start position
         def get_quartile_label(group):
             q25 = group['vis_score'].quantile(0.25)
@@ -169,28 +156,25 @@ class TableGenerator:
         
         completed = completed.groupby('start_band', group_keys=False, observed=False).apply(get_quartile_label)
         
-        # 4. Filter to only Q1 and Q4 for clean comparison
+        # Filter to only Q1 and Q4 for clean comparison
         extremes = completed[completed['effort_bucket'].isin(['Low Effort (Q1)', 'High Effort (Q4)'])]
         
-        # 5. Aggregate EPA by Start Band and Effort Bucket
         epa_table = extremes.groupby(['start_band', 'effort_bucket'], observed=False).agg(
             play_count=('play_id', 'count'),
             avg_epa=('expected_points_added', 'mean')
         ).reset_index()
         
-        # 6. Pivot for clear comparison
+        # Pivot for clear comparison
         epa_pivot = epa_table.pivot(index='start_band', columns='effort_bucket', values='avg_epa')
         
-        # 7. Calculate EPA Saved (Low Effort EPA - High Effort EPA)
+        # Calculate EPA Saved (Low Effort EPA - High Effort EPA)
         # Positive = High effort defenders saved points
         if 'Low Effort (Q1)' in epa_pivot.columns and 'High Effort (Q4)' in epa_pivot.columns:
             epa_pivot['EPA_Saved'] = epa_pivot['Low Effort (Q1)'] - epa_pivot['High Effort (Q4)']
         
-        # 8. Add play counts for context
         count_pivot = epa_table.pivot(index='start_band', columns='effort_bucket', values='play_count')
         epa_pivot['Plays_Compared'] = count_pivot.sum(axis=1)
         
-        # Reorder columns for clarity
         col_order = ['Low Effort (Q1)', 'High Effort (Q4)', 'EPA_Saved', 'Plays_Compared']
         epa_pivot = epa_pivot[[c for c in col_order if c in epa_pivot.columns]]
         
@@ -198,19 +182,17 @@ class TableGenerator:
 
     def generate_position_breakdown(self):
         """
-        TABLE 6: Position Breakdown - "Who Should Erase?"
+        Position Breakdown - "Differe Players Roles"
+
         Shows which position groups are best suited for the Eraser role.
-        Uses RAW metrics (not shrunk) for position-level comparisons.
         """
         df = self.df.copy()
         
-        # 1. Define Eraser criteria (derived from start/end distances, not void_type)
-        # Eraser = Started in High Void (>6yds) AND closed to tight (<2yds)
+        # Define Eraser criteria (derived from start/end distances, not void_type)
         OPEN_THRESH = 6.0
         CLOSED_THRESH = 2.0
         df['is_eraser_play'] = (df['p_dist_at_throw'] >= OPEN_THRESH) & (df['dist_at_arrival'] <= CLOSED_THRESH)
         
-        # 2. Group by player position
         position_stats = df.groupby('player_position').agg(
             play_count=('play_id', 'count'),
             avg_start_dist=('p_dist_at_throw', 'mean'),
@@ -219,13 +201,13 @@ class TableGenerator:
             eraser_plays=('is_eraser_play', 'sum')
         ).reset_index()
         
-        # 3. Calculate Eraser Rate (% of plays where they achieved Eraser outcome)
+        # Calculate Eraser Rate (% of plays where they achieved Eraser outcome)
         position_stats['eraser_rate'] = (position_stats['eraser_plays'] / position_stats['play_count'] * 100).round(1)
         
-        # 4. Filter for positions with meaningful sample size
+        # Filter for positions with meaningful sample size
         position_stats = position_stats[position_stats['play_count'] >= 50].copy()
         
-        # 5. Derive Erasure Archetype based on behavior patterns
+        # Derive Erasure Archetype based on behavior patterns
         def assign_archetype(row):
             avg_start = row['avg_start_dist']
             avg_vis = row['avg_vis']
@@ -248,23 +230,20 @@ class TableGenerator:
         
         position_stats['archetype'] = position_stats.apply(assign_archetype, axis=1)
         
-        # 6. Format output columns
         position_stats['avg_start_dist'] = position_stats['avg_start_dist'].round(1)
         position_stats['avg_end_dist'] = position_stats['avg_end_dist'].round(1)
         position_stats['avg_vis'] = position_stats['avg_vis'].round(2)
         
-        # 7. Select and order columns for output
-        # Note: Dropping raw_ceoe as it regresses toward positional means (~0) and confuses readers
-        # VIS and archetype provide clearer differentiation
+        # Select and order columns for output
+        # TODO: bring them from schema.
         output_cols = ['player_position', 'play_count', 'avg_start_dist', 'avg_end_dist',
                        'avg_vis', 'eraser_rate', 'archetype']
         
-        # Sort by avg_start_dist descending (deep players first = primary erasers)
         return position_stats[output_cols].sort_values('avg_start_dist', ascending=False)
 
     def generate_void_effect_size(self):
         """
-        TABLE: Void Effect Size Analysis
+        Void Effect Size Analysis
         Shows completion %, EPA, and YAC by S_throw band with effect size 
         (Δ from Tight baseline) to quantify the jump in difficulty.
         """
@@ -291,8 +270,7 @@ class TableGenerator:
         completed = df[df['pass_result'] == 'C']
         yac_by_band = completed.groupby('start_band', observed=False)['yac'].mean().reset_index()
         yac_by_band.columns = ['start_band', 'avg_yac']
-        
-        # Merge YAC back
+
         band_stats = band_stats.merge(yac_by_band, on='start_band', how='left')
         
         # Calculate completion percentage
@@ -314,7 +292,6 @@ class TableGenerator:
         band_stats['avg_yac'] = band_stats['avg_yac'].round(1)
         band_stats['completion_pct'] = band_stats['completion_pct'].apply(lambda x: f"{x}%")
         
-        # Select and rename columns for output
         output = band_stats[['start_band', 'play_count', 'completion_pct', 'delta_from_tight', 'avg_epa', 'avg_yac']]
         output.columns = ['S_throw Band', 'Play Count', 'Completion %', 'Δ from Tight', 'Avg EPA Allowed', 'Avg YAC']
         

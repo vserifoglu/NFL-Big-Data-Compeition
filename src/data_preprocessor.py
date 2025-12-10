@@ -11,25 +11,23 @@ class DataPreProcessor:
 
     def filter_context(self, supp_df):
         """
-        Filters the supplementary dataframe and performs 'Lightweight Feature Engineering'.
-        Goal: Create the 'Base Subset' (Standard Football) without loading tracking data.
+        Filters the supplementary dataframe and performs 'Lightweight Feature Engineering'..
         """
 
-        # 1. Calculate Possession Win Probability
+        # Calculate Possession Win Probability
         supp_df['possession_win_prob'] = np.where(
             supp_df['possession_team'] == supp_df['home_team_abbr'],
             supp_df['pre_snap_home_team_win_probability'],
             supp_df['pre_snap_visitor_team_win_probability'],
         )
         
-        # 2. Calculate Normalized Field Position (0-100 Scale)
+        # Calculate Normalized Field Position (0-100 Scale)
         # Logic: If on own side, use number. If on opp side, use 100 - number.
         supp_df['yards_from_own_goal'] = np.where(
             supp_df['yardline_side'] == supp_df['possession_team'],
             supp_df['yardline_number'],           
             100 - supp_df['yardline_number']      
         )
-
 
         # valid mask filters
         valid_mask = (
@@ -43,7 +41,6 @@ class DataPreProcessor:
 
         # remove trick / cheap plays
         screen_shovel_mask = (
-            # Text Search for Screens
             supp_df['route_of_targeted_receiver'].astype(str).str.upper().str.contains('SCREEN', na=False) | 
             
             # Physics Check: Ball caught behind or at LOS (Shovels/Swings)
@@ -58,7 +55,6 @@ class DataPreProcessor:
         
         # base situations
         base_situation_mask = (           
-            # Standard Downs
             (supp_df['down'].isin([1, 2])) &
             
             # Competitive Game (Neutral Script)

@@ -13,8 +13,7 @@ class DataLoader:
         """
         self.data_dir = data_dir
         self.supp_file = supp_file
-        
-        # 1. Find all files
+
         self.input_files = sorted(glob.glob(os.path.join(self.data_dir, 'input_*.csv')))
         self.output_files = glob.glob(os.path.join(self.data_dir, 'output_*.csv'))
         
@@ -40,13 +39,10 @@ class DataLoader:
         """
         The Lazy Loader.
         Yields: (week_num, input_df, output_df)
-        
-        Validation happens JUST-IN-TIME here.
         """
 
-        count = 0
         for input_path in self.input_files:
-            # if count > 0: break
+
             # Extract Week Number
             match = re.search(r'w(\d{2})', input_path)
             
@@ -68,6 +64,5 @@ class DataLoader:
             input_valid = RawTrackingSchema.validate(input_raw)
             output_valid = OutputTrackingSchema.validate(output_raw)
             
-            # count += 1
             # Yield the clean, validated data to the Orchestrator
             yield week_num, input_valid, output_valid

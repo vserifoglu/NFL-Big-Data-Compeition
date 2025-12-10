@@ -8,7 +8,6 @@ class EraserEngine:
 
     def calculate_erasure(self, df: pd.DataFrame, context_df: pd.DataFrame) -> pd.DataFrame:
         """
-        PHASE B: The Action.
         Calculates how distinct defenders close space on the targeted receiver.
         """
         # Filter for Post-Throw Phase only
@@ -36,16 +35,15 @@ class EraserEngine:
 
         def grade_defender(group):
             group = group.sort_values('frame_id')
-            
-            # A. Get Start and End Distances
+
             d_start = group['dist_to_target'].iloc[0] # Distance at Throw
             d_end = group['dist_to_target'].iloc[-1]  # Distance at Arrival
             
-            # B. Metric 1: VIS (Void Improvement Score)
+            # Metric 1: VIS (Void Improvement Score)
             # Positive = Good (Closed gap), Negative = Bad (Lost gap)
             vis = d_start - d_end
             
-            # C. Metric 2: Closing Speed (Rate of Change)
+            # Metric 2: Closing Speed (Rate of Change)
             # Calculate distance change per frame
             # We multiply by -1 because getting closer (dist going down) is positive speed
             dist_change = group['dist_to_target'].diff() * -1

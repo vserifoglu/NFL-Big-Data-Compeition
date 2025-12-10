@@ -20,14 +20,13 @@ class PhysicsEngine:
         POLY = 2   # Quadratic fit
         
         def calculate_sg(group):
-            # Short Track Handling
+
             if len(group) < WINDOW:
-                # Simple Euclidean distance change / 0.1s
                 dx = group['x'].diff() 
                 dy = group['y'].diff()
                 
                 dist = np.sqrt(dx**2 + dy**2)
-                s = dist / 0.1  # Speed in yds/s
+                s = dist / 0.1 
                 
                 # Acceleration is diff of speed
                 a = s.diff().fillna(0) / 0.1
@@ -36,15 +35,15 @@ class PhysicsEngine:
                     {'s_derived': s, 'a_derived': a}, 
                     index=group.index)
             
-            # 1. First Derivative (Velocity)
+            # First Derivative (Velocity)
             vx = savgol_filter(group['x'], window_length=WINDOW, polyorder=POLY, deriv=1, delta=0.1)
             vy = savgol_filter(group['y'], window_length=WINDOW, polyorder=POLY, deriv=1, delta=0.1)
             
-            # 2. Second Derivative (Acceleration)
+            # Second Derivative (Acceleration)
             ax = savgol_filter(group['x'], window_length=WINDOW, polyorder=POLY, deriv=2, delta=0.1)
             ay = savgol_filter(group['y'], window_length=WINDOW, polyorder=POLY, deriv=2, delta=0.1)
             
-            # 3. Magnitudes (Scalar)
+            # Magnitudes (Scalar)
             s = np.sqrt(vx**2 + vy**2)
             a = np.sqrt(ax**2 + ay**2)
             
