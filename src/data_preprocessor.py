@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import gc
 from typing import Generator, Tuple, List
-from schema import PreprocessedSchema
+from src.schema import PreprocessedSchema
 
 class DataPreProcessor:
     def __init__(self):

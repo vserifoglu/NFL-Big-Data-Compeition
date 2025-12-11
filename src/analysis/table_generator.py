@@ -1,9 +1,11 @@
 import pandas as pd
 import numpy as np
+from src.config import vis_config
+
 
 class TableGenerator:
-    def __init__(self, summary_path: str):
-        self.df = pd.read_csv(summary_path)
+    def __init__(self, suumary_df: str):
+        self.df = suumary_df
         
         # We exclude Pass Rushers who occasionally drop into coverage
         self.df = self.df[self.df['player_role'].isin([
@@ -298,9 +300,9 @@ class TableGenerator:
         return output
     
 if __name__ == "__main__":
-    SUMMARY_FILE = "data/processed/eraser_analysis_summary.csv"
-    
-    gen = TableGenerator(SUMMARY_FILE)
+    # If running standalone, you need to load data here manually
+    df = pd.read_csv(vis_config.SUMMARY_FILE)
+    gen = TableGenerator(df)
     
     print("\n--- SHRUNK LEADERBOARD (Bayesian m=20) ---")
     print(gen.generate_shrunk_leaderboard().to_string(index=False))

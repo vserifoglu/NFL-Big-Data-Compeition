@@ -3,7 +3,7 @@ import glob
 import re
 import pandas as pd
 from typing import Generator, Tuple
-from schema import RawTrackingSchema, OutputTrackingSchema, RawSuppSchema
+from src.schema import RawTrackingSchema, OutputTrackingSchema, RawSuppSchema
 
 
 class DataLoader:

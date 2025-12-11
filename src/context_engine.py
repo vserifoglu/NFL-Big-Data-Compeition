@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from schema import ContextSchema
+from src.schema import ContextSchema
 
 class ContextEngine:
     def __init__(self):

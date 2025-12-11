@@ -1,12 +1,11 @@
 import pandas as pd
-import numpy as np
 
 # TODO: define hardcode nubmers. 
 
 class StoryDataEngine:
-    def __init__(self, summary_path: str, frames_path: str, seed=42):
-        self.summary_df = pd.read_csv(summary_path)
-        self.frames_path = frames_path
+    def __init__(self, summary_df: str, frames_df: str, seed=42):
+        self.summary_df = summary_df
+        self.frames_df = frames_df
         self.seed = seed
         
     def cast_archetypes(self):
@@ -178,5 +177,8 @@ class StoryDataEngine:
 
     def get_play_frames(self, play_meta):
         if not play_meta: return pd.DataFrame()
-        df = pd.read_csv(self.frames_path)
-        return df[(df['game_id'] == play_meta['game_id']) & (df['play_id'] == play_meta['play_id'])].copy()
+        
+        return self.frames_df[
+            (self.frames_df['game_id'] == play_meta['game_id']) & 
+            (self.frames_df['play_id'] == play_meta['play_id'])
+        ].copy()

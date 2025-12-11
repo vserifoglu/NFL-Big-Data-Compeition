@@ -43,22 +43,12 @@ NFL_TEAM_COLORS = {
 }
 
 class AnimationEngine:
-    def __init__(self, summary_path, frames_path, output_dir):
+    def __init__(self, summary_df, frames_df, output_dir):
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
        
-        print(f"   [Animator] Loading Data...")
-        self.summary_df = pd.read_csv(summary_path)
-       
-        cols = [
-            'game_id', 'play_id', 'nfl_id', 'frame_id', 'x', 'y', 'phase',
-            'player_role', 'player_name', 'ball_land_x', 'ball_land_y',
-            'down', 'yards_to_go', 'pass_result', 'possession_team', 'defensive_team',
-            'yardline_number', 'yardline_side', 'team_coverage_type', 'yards_gained',
-            's_derived'  
-        ]
-       
-        self.frames_df = pd.read_csv(frames_path, usecols=cols)
+        self.summary_df = summary_df
+        self.frames_df = frames_df
 
     def _draw_field(self, ax):
         """Sets up the static NFL-style field background with enhanced details."""

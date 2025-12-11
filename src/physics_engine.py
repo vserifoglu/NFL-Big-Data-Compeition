@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from scipy.signal import savgol_filter
-from schema import PhysicsSchema
+from src.schema import PhysicsSchema
 
 class PhysicsEngine:
     def __init__(self):

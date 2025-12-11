@@ -9,13 +9,9 @@ sns.set_theme(style="whitegrid", context="talk")
 plt.rcParams['font.family'] = 'sans-serif'
 
 class StoryVisualEngine:
-    def __init__(self, summary_path: str, animation_path: str, output_dir: str):
-        print(f"   [VizGen] Loading Summary: {summary_path}...")
-        self.summary_df = pd.read_csv(summary_path)
-        
-        print(f"   [VizGen] Loading Animation Data (Lazy): {animation_path}...")
-        req_cols = ['game_id', 'play_id', 'nfl_id', 'frame_id', 'player_role', 'x', 'y']
-        self.frames_df = pd.read_csv(animation_path, usecols=req_cols)
+    def __init__(self, summary_df, frames_df, output_dir):
+        self.summary_df = summary_df
+        self.frames_df = frames_df
         
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)

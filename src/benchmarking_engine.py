@@ -1,5 +1,5 @@
 import pandas as pd
-from schema import BenchMarkingSchema, AnalysisReportSchema
+from src.schema import BenchMarkingSchema, AnalysisReportSchema
 
 
 class BenchmarkingEngine:

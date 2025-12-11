@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from schema import EraserMetricsSchema
+from src.schema import EraserMetricsSchema
 
 class EraserEngine:
     def __init__(self):

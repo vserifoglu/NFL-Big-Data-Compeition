@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from schema import AnalysisReportSchema, AggregationScoresSchema, FullPlayAnimationSchema
+from src.schema import AnalysisReportSchema, AggregationScoresSchema, FullPlayAnimationSchema
 
 class DataExporter:
     def __init__(self, output_dir: str):

@@ -1,27 +1,30 @@
 import os
 from datetime import datetime
 import gc
+from src.config import DataPipelineConfig, data_config
+from src.load_data import DataLoader
+from src.data_preprocessor import DataPreProcessor
+from src.physics_engine import PhysicsEngine
+from src.context_engine import ContextEngine
+from src.eraser_engine import EraserEngine
+from src.benchmarking_engine import BenchmarkingEngine
+from src.data_exporter import DataExporter
 
-from load_data import DataLoader
-from data_preprocessor import DataPreProcessor
-from physics_engine import PhysicsEngine
-from context_engine import ContextEngine
-from eraser_engine import EraserEngine
-from benchmarking_engine import BenchmarkingEngine
-from data_exporter import DataExporter
-
-def run_full_pipeline():
+def run_full_pipeline(DATA_DIR=None, SUPP_FILE=None, OUTPUT_DIR=None):
     start_time = datetime.now()
+    print("hello")
+    # Use provided arguments, else fall back to config.py values
+    cfg = DataPipelineConfig(
+        DATA_DIR=DATA_DIR or data_config.DATA_DIR,
+        SUPP_FILE=SUPP_FILE or data_config.SUPP_FILE,
+        OUTPUT_DIR=OUTPUT_DIR or data_config.OUTPUT_DIR
+    )
 
-    DATA_DIR = 'data/train'
-    SUPP_FILE = 'data/supplementary_data.csv'
-    OUTPUT_DIR = 'data/processed'
-
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
 
     # 1. LOAD
     print(f"[1/7] Initializing Data Loader ({datetime.now().strftime('%H:%M:%S')})...")
-    loader = DataLoader(DATA_DIR, SUPP_FILE)
+    loader = DataLoader(cfg.DATA_DIR, cfg.SUPP_FILE)
     raw_supp = loader.load_supplementary()
     raw_tracking = loader.stream_weeks()
 
@@ -63,7 +66,7 @@ def run_full_pipeline():
 
     # 7. EXPORT
     print("[7/7] Phase D: Exporting Results...")
-    exporter = DataExporter(OUTPUT_DIR)
+    exporter = DataExporter(cfg.OUTPUT_DIR)
     exporter.export_results(
         df_summary=df_final, 
         df_frames=df_physics
